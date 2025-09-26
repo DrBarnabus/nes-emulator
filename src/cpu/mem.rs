@@ -1,4 +1,4 @@
-﻿use crate::cpu::Cpu;
+use crate::cpu::Cpu;
 
 pub trait Mem {
     fn read(&self, address: u16) -> u8;

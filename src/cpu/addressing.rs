@@ -1,3 +1,4 @@
+use crate::cpu::mem::Mem;
 use super::Cpu;
 
 #[derive(Debug, PartialEq, Eq)]

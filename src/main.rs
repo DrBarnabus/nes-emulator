@@ -8,6 +8,7 @@ use sdl2::EventPump;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::{Color, PixelFormatEnum};
+use cpu::mem::Mem;
 
 fn color(byte: u8) -> Color {
     match byte {
@@ -126,11 +127,10 @@ fn main() {
 
     let mut bus = Bus::new();
     bus.load_program(&game_code, 0x0600);
-    bus.write(0xFFFC, 0x00);
-    bus.write(0xFFFD, 0x06);
 
     let mut cpu = Cpu::new(bus);
     cpu.reset();
+    cpu.pc = 0x0600;
 
     let mut screen_state = [0u8; 32 * 3 * 32];
     let mut rng = rand::rng();

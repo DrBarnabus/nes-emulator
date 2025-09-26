@@ -1,9 +1,11 @@
 mod addressing;
 mod instructions;
+pub mod mem;
 
 use super::bus::Bus;
 use addressing::AddressingMode;
 use instructions::Opcode;
+use mem::Mem;
 
 bitflags::bitflags! {
     #[derive(Clone, Copy)]
@@ -108,16 +110,6 @@ impl Cpu {
         self.cycles += 1;
     }
 
-    pub fn read(&self, address: u16) -> u8 {
-        self.bus.read(address)
-    }
-
-    pub fn read_u16(&self, address: u16) -> u16 {
-        let low_byte = self.read(address) as u16;
-        let high_byte = self.read(address + 1) as u16;
-        (high_byte << 8) | low_byte
-    }
-
     pub fn read_operand(&mut self, mode: AddressingMode, pc: u16) -> (u8, bool) {
         match mode {
             AddressingMode::Accumulator => (self.a, false),
@@ -127,10 +119,6 @@ impl Cpu {
                 (self.read(address), page_crossed)
             }
         }
-    }
-
-    pub fn write(&mut self, address: u16, value: u8) {
-        self.bus.write(address, value);
     }
 
     fn stack_pop(&mut self) -> u8 {

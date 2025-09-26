@@ -1,4 +1,5 @@
-use super::{Cpu, StatusFlags, addressing::AddressingMode};
+use crate::cpu::mem::Mem;
+use super::{addressing::AddressingMode, Cpu, StatusFlags};
 
 #[derive(Debug, Clone, Copy)]
 #[allow(clippy::upper_case_acronyms)]
@@ -1666,20 +1667,21 @@ impl Cpu {
 mod tests {
     use crate::bus::Bus;
     use crate::cpu::{Cpu, StatusFlags};
+    use crate::cpu::mem::Mem;
 
     #[test]
     fn test_lda_immediate() {
         let mut bus = Bus::new();
-        bus.load_program(&[0xA9, 0x42], 0x8000); // LDA #$42
+        bus.load_program(&[0xA9, 0x42], 0x0600); // LDA #$42
 
         let mut cpu = Cpu::new(bus);
-        cpu.pc = 0x8000;
+        cpu.pc = 0x0600;
 
         cpu.clock(); // Fetch opcode
         cpu.clock(); // Complete instruction
 
         assert_eq!(cpu.a, 0x42);
-        assert_eq!(cpu.pc, 0x8002);
+        assert_eq!(cpu.pc, 0x0602);
         assert!(!cpu.status.contains(StatusFlags::ZERO));
         assert!(!cpu.status.contains(StatusFlags::NEGATIVE));
     }
@@ -1687,11 +1689,10 @@ mod tests {
     #[test]
     fn test_lda_immediate_zero_flag() {
         let mut bus = Bus::new();
-        bus.write(0x8000, 0xA9); // LDA immediate
-        bus.write(0x8001, 0x00); // Load 0
+        bus.load_program(&[0xA9, 0x00], 0x0600); // LDA #0
 
         let mut cpu = Cpu::new(bus);
-        cpu.pc = 0x8000;
+        cpu.pc = 0x0600;
 
         cpu.clock();
         cpu.clock();
@@ -1704,11 +1705,10 @@ mod tests {
     #[test]
     fn test_lda_immediate_negative_flag() {
         let mut bus = Bus::new();
-        bus.write(0x8000, 0xA9); // LDA immediate
-        bus.write(0x8001, 0x80);
+        bus.load_program(&[0xA9, 0x80], 0x0600); // LDA #80
 
         let mut cpu = Cpu::new(bus);
-        cpu.pc = 0x8000;
+        cpu.pc = 0x0600;
 
         cpu.clock();
         cpu.clock();
@@ -1721,10 +1721,10 @@ mod tests {
     #[test]
     fn test_sta_zero_page() {
         let mut bus = Bus::new();
-        bus.load_program(&[0xA9, 0x42, 0x85, 0x85], 0x8000); // LDA #$42, STA $85
+        bus.load_program(&[0xA9, 0x42, 0x85, 0x85], 0x0600); // LDA #$42, STA $85
 
         let mut cpu = Cpu::new(bus);
-        cpu.pc = 0x8000;
+        cpu.pc = 0x0600;
 
         cpu.clock(); // Fetch opcode
         cpu.clock(); // Complete instruction

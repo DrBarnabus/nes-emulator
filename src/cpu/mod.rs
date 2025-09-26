@@ -1,4 +1,4 @@
-﻿mod addressing;
+mod addressing;
 mod instructions;
 
 use super::bus::Bus;
@@ -54,6 +54,29 @@ impl Cpu {
         }
     }
 
+    pub fn reset(&mut self) {
+        self.a = 0;
+        self.x = 0;
+        self.y = 0;
+        self.status = StatusFlags::INTERRUPT_DISABLE | StatusFlags::UNUSED;
+
+        self.pc = self.read_u16(0xFFFC);
+    }
+
+    pub fn run<F>(&mut self, mut callback: F)
+    where
+        F: FnMut(&mut Cpu),
+    {
+        loop {
+            self.clock(); // First clock to fetch the next instruction
+            while self.cycles_remaining > 0 {
+                self.clock();
+            }
+
+            callback(self);
+        }
+    }
+
     pub fn clock(&mut self) {
         if self.cycles_remaining == 0 {
             self.handle_interrupts();
@@ -76,20 +99,20 @@ impl Cpu {
         }
 
         self.cycles_remaining -= 1;
-        if self.cycles_remaining == 0 {
-            if let Some((op, operand_pc)) = self.current_instruction.take() {
-                self.execute_instruction(op, operand_pc);
-            }
+        if self.cycles_remaining == 0
+            && let Some((op, operand_pc)) = self.current_instruction.take()
+        {
+            self.execute_instruction(op, operand_pc);
         }
 
         self.cycles += 1;
     }
 
-    pub fn read(&mut self, address: u16) -> u8 {
+    pub fn read(&self, address: u16) -> u8 {
         self.bus.read(address)
     }
 
-    pub fn read_u16(&mut self, address: u16) -> u16 {
+    pub fn read_u16(&self, address: u16) -> u16 {
         let low_byte = self.read(address) as u16;
         let high_byte = self.read(address + 1) as u16;
         (high_byte << 8) | low_byte
@@ -158,12 +181,12 @@ impl Cpu {
         self.a = value;
         self.set_zero_and_negative_flags(value);
     }
-    
+
     fn set_register_x(&mut self, value: u8) {
         self.x = value;
         self.set_zero_and_negative_flags(value);
     }
-    
+
     fn set_register_y(&mut self, value: u8) {
         self.y = value;
         self.set_zero_and_negative_flags(value);

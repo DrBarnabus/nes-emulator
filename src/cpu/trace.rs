@@ -23,6 +23,7 @@ pub fn trace(cpu: &Cpu) -> String {
 
     let tmp = match opcode.size_bytes {
         1 if opcode.mode == AddressingMode::Accumulator => String::from("A "),
+        2 if opcode.opcode == 0x00 => String::from(""),
         2 => {
             let address = cpu.read(opcode_pc + 1);
             hex_dump.push(address);
@@ -93,7 +94,23 @@ pub fn trace(cpu: &Cpu) -> String {
 
     let hex_str = hex_dump.iter().map(|z| format!("{:02x}", z)).collect::<Vec<String>>().join(" ");
 
-    let asm_str = format!("{:04x}  {:8} {: >4} {}", opcode_pc, hex_str, opcode.mnemonic, tmp).trim().to_string();
+    // replace mnemonic with that expected by nestest (might remove later)
+    let mnemonic = match opcode.mnemonic {
+        "SBC" if opcode.opcode == 0xEB => "*SBC",
+        "NOP" if matches!(opcode.opcode, 0x1A | 0x3A | 0x5A | 0x7A | 0xDA | 0xFA) => "*NOP",
+        "DOP" | "TOP" => "*NOP",
+        "LAX" => "*LAX",
+        "AAX" => "*SAX",
+        "DCP" => "*DCP",
+        "ISC" => "*ISB",
+        "SLO" => "*SLO",
+        "RLA" => "*RLA",
+        "RRA" => "*RRA",
+        "SRE" => "*SRE",
+        mnemonic => mnemonic,
+    };
+
+    let asm_str = format!("{:04x}  {:8} {: >4} {}", opcode_pc, hex_str, mnemonic, tmp).trim().to_string();
     format!(
         "{:47} A:{:02x} X:{:02x} Y:{:02x} P:{:02x} SP:{:02x} CYC:{}",
         asm_str, cpu.a, cpu.x, cpu.y, cpu.status, cpu.sp, cpu.cycles

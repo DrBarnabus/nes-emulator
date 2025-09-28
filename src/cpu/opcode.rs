@@ -42,7 +42,7 @@ impl Opcode {
 
 lazy_static! {
     pub static ref OPCODES: Vec<Opcode> = vec![
-        // LDA (Load Accumulator)
+        // Load/Store Operations
         Opcode::new(0xA9, "LDA", Instruction::LDA, AddressingMode::Immediate, 2, 2, false, false),
         Opcode::new(0xA5, "LDA", Instruction::LDA, AddressingMode::ZeroPage, 2, 3, false, false),
         Opcode::new(0xB5, "LDA", Instruction::LDA, AddressingMode::ZeroPageX, 2, 4, false, false),
@@ -52,21 +52,18 @@ lazy_static! {
         Opcode::new(0xA1, "LDA", Instruction::LDA, AddressingMode::IndirectX, 2, 6, false, false),
         Opcode::new(0xB1, "LDA", Instruction::LDA, AddressingMode::IndirectY, 2, 5, true, false),
 
-        // LDX (Load X Register)
         Opcode::new(0xA2, "LDX", Instruction::LDX, AddressingMode::Immediate, 2, 2, false, false),
         Opcode::new(0xA6, "LDX", Instruction::LDX, AddressingMode::ZeroPage, 2, 3, false, false),
         Opcode::new(0xB6, "LDX", Instruction::LDX, AddressingMode::ZeroPageY, 2, 4, false, false),
         Opcode::new(0xAE, "LDX", Instruction::LDX, AddressingMode::Absolute, 3, 4, false, false),
         Opcode::new(0xBE, "LDX", Instruction::LDX, AddressingMode::AbsoluteY, 3, 4, true, false),
 
-        // LDY (Load Y Register)
         Opcode::new(0xA0, "LDY", Instruction::LDY, AddressingMode::Immediate, 2, 2, false, false),
         Opcode::new(0xA4, "LDY", Instruction::LDY, AddressingMode::ZeroPage, 2, 3, false, false),
         Opcode::new(0xB4, "LDY", Instruction::LDY, AddressingMode::ZeroPageX, 2, 4, false, false),
         Opcode::new(0xAC, "LDY", Instruction::LDY, AddressingMode::Absolute, 3, 4, false, false),
         Opcode::new(0xBC, "LDY", Instruction::LDY, AddressingMode::AbsoluteX, 3, 4, true, false),
 
-        // STA (Store Accumulator)
         Opcode::new(0x85, "STA", Instruction::STA, AddressingMode::ZeroPage, 2, 3, false, false),
         Opcode::new(0x95, "STA", Instruction::STA, AddressingMode::ZeroPageX, 2, 4, false, false),
         Opcode::new(0x8D, "STA", Instruction::STA, AddressingMode::Absolute, 3, 4, false, false),
@@ -75,12 +72,10 @@ lazy_static! {
         Opcode::new(0x81, "STA", Instruction::STA, AddressingMode::IndirectX, 2, 6, false, false),
         Opcode::new(0x91, "STA", Instruction::STA, AddressingMode::IndirectY, 2, 6, false, false),
 
-        // STX (Store X Register)
         Opcode::new(0x86, "STX", Instruction::STX, AddressingMode::ZeroPage, 2, 3, false, false),
         Opcode::new(0x96, "STX", Instruction::STX, AddressingMode::ZeroPageY, 2, 4, false, false),
         Opcode::new(0x8E, "STX", Instruction::STX, AddressingMode::Absolute, 3, 4, false, false),
 
-        // STY (Store Y Register)
         Opcode::new(0x84, "STY", Instruction::STY, AddressingMode::ZeroPage, 2, 3, false, false),
         Opcode::new(0x94, "STY", Instruction::STY, AddressingMode::ZeroPageX, 2, 4, false, false),
         Opcode::new(0x8C, "STY", Instruction::STY, AddressingMode::Absolute, 3, 4, false, false),
@@ -237,6 +232,132 @@ lazy_static! {
         Opcode::new(0x00, "BRK", Instruction::BRK, AddressingMode::Implied, 2, 7, false, false),
         Opcode::new(0xEA, "NOP", Instruction::NOP, AddressingMode::Implied, 1, 2, false, false),
         Opcode::new(0x40, "RTI", Instruction::RTI, AddressingMode::Implied, 1, 6, false, false),
+
+        // Undocumented Opcodes
+        Opcode::new(0x0B, "AAC", Instruction::AAC, AddressingMode::Immediate, 2, 2, false, false),
+        Opcode::new(0x2B, "AAC", Instruction::AAC, AddressingMode::Immediate, 2, 2, false, false),
+
+        Opcode::new(0x87, "AAX", Instruction::AAX, AddressingMode::ZeroPage, 2, 3, false, false),
+        Opcode::new(0x97, "AAX", Instruction::AAX, AddressingMode::ZeroPageY, 2, 4, false, false),
+        Opcode::new(0x8F, "AAX", Instruction::AAX, AddressingMode::Absolute, 3, 4, false, false),
+        Opcode::new(0x83, "AAX", Instruction::AAX, AddressingMode::IndirectX, 2, 6, false, false),
+
+        Opcode::new(0x6B, "ARR", Instruction::ARR, AddressingMode::Immediate, 2, 2, false, false),
+        Opcode::new(0x4B, "ASR", Instruction::ASR, AddressingMode::Immediate, 2, 2, false, false),
+        Opcode::new(0xAB, "ATX", Instruction::ATX, AddressingMode::Immediate, 2, 2, false, false),
+
+        Opcode::new(0x9F, "AXA", Instruction::AXA, AddressingMode::AbsoluteY, 3, 5, false, false),
+        Opcode::new(0x93, "AXA", Instruction::AXA, AddressingMode::IndirectY, 2, 6, false, false),
+
+        Opcode::new(0xCB, "AXS", Instruction::AXS, AddressingMode::Immediate, 2, 2, false, false),
+
+        Opcode::new(0xC7, "DCP", Instruction::DCP, AddressingMode::ZeroPage, 2, 5, false, false),
+        Opcode::new(0xD7, "DCP", Instruction::DCP, AddressingMode::ZeroPageX, 2, 6, false, false),
+        Opcode::new(0xCF, "DCP", Instruction::DCP, AddressingMode::Absolute, 3, 6, false, false),
+        Opcode::new(0xDF, "DCP", Instruction::DCP, AddressingMode::AbsoluteX, 3, 7, false, false),
+        Opcode::new(0xDB, "DCP", Instruction::DCP, AddressingMode::AbsoluteY, 3, 7, false, false),
+        Opcode::new(0xC3, "DCP", Instruction::DCP, AddressingMode::IndirectX, 2, 8, false, false),
+        Opcode::new(0xD3, "DCP", Instruction::DCP, AddressingMode::IndirectY, 2, 8, false, false),
+
+        Opcode::new(0x04, "DOP", Instruction::DOP, AddressingMode::ZeroPage, 2, 3, false, false),
+        Opcode::new(0x14, "DOP", Instruction::DOP, AddressingMode::ZeroPageX, 2, 4, false, false),
+        Opcode::new(0x34, "DOP", Instruction::DOP, AddressingMode::ZeroPageX, 2, 4, false, false),
+        Opcode::new(0x44, "DOP", Instruction::DOP, AddressingMode::ZeroPage, 2, 3, false, false),
+        Opcode::new(0x54, "DOP", Instruction::DOP, AddressingMode::ZeroPageX, 2, 4, false, false),
+        Opcode::new(0x64, "DOP", Instruction::DOP, AddressingMode::ZeroPage, 2, 3, false, false),
+        Opcode::new(0x74, "DOP", Instruction::DOP, AddressingMode::ZeroPageX, 2, 4, false, false),
+        Opcode::new(0x80, "DOP", Instruction::DOP, AddressingMode::Immediate, 2, 2, false, false),
+        Opcode::new(0x82, "DOP", Instruction::DOP, AddressingMode::Immediate, 2, 2, false, false),
+        Opcode::new(0x89, "DOP", Instruction::DOP, AddressingMode::Immediate, 2, 2, false, false),
+        Opcode::new(0xC2, "DOP", Instruction::DOP, AddressingMode::Immediate, 2, 2, false, false),
+        Opcode::new(0xD4, "DOP", Instruction::DOP, AddressingMode::ZeroPageX, 2, 4, false, false),
+        Opcode::new(0xE2, "DOP", Instruction::DOP, AddressingMode::Immediate, 2, 2, false, false),
+        Opcode::new(0xF4, "DOP", Instruction::DOP, AddressingMode::ZeroPageX, 2, 4, false, false),
+
+        Opcode::new(0xE7, "ISC", Instruction::ISC, AddressingMode::ZeroPage, 2, 5, false, false),
+        Opcode::new(0xF7, "ISC", Instruction::ISC, AddressingMode::ZeroPageX, 2, 6, false, false),
+        Opcode::new(0xEF, "ISC", Instruction::ISC, AddressingMode::Absolute, 3, 6, false, false),
+        Opcode::new(0xFF, "ISC", Instruction::ISC, AddressingMode::AbsoluteX, 3, 7, false, false),
+        Opcode::new(0xFB, "ISC", Instruction::ISC, AddressingMode::AbsoluteY, 3, 7, false, false),
+        Opcode::new(0xE3, "ISC", Instruction::ISC, AddressingMode::IndirectX, 2, 8, false, false),
+        Opcode::new(0xF3, "ISC", Instruction::ISC, AddressingMode::IndirectY, 2, 8, false, false),
+
+        Opcode::new(0x02, "KIL", Instruction::KIL, AddressingMode::Implied, 1, 1, false, false),
+        Opcode::new(0x12, "KIL", Instruction::KIL, AddressingMode::Implied, 1, 1, false, false),
+        Opcode::new(0x22, "KIL", Instruction::KIL, AddressingMode::Implied, 1, 1, false, false),
+        Opcode::new(0x32, "KIL", Instruction::KIL, AddressingMode::Implied, 1, 1, false, false),
+        Opcode::new(0x42, "KIL", Instruction::KIL, AddressingMode::Implied, 1, 1, false, false),
+        Opcode::new(0x52, "KIL", Instruction::KIL, AddressingMode::Implied, 1, 1, false, false),
+        Opcode::new(0x62, "KIL", Instruction::KIL, AddressingMode::Implied, 1, 1, false, false),
+        Opcode::new(0x72, "KIL", Instruction::KIL, AddressingMode::Implied, 1, 1, false, false),
+        Opcode::new(0x92, "KIL", Instruction::KIL, AddressingMode::Implied, 1, 1, false, false),
+        Opcode::new(0xB2, "KIL", Instruction::KIL, AddressingMode::Implied, 1, 1, false, false),
+        Opcode::new(0xD2, "KIL", Instruction::KIL, AddressingMode::Implied, 1, 1, false, false),
+        Opcode::new(0xF2, "KIL", Instruction::KIL, AddressingMode::Implied, 1, 1, false, false),
+
+        Opcode::new(0xBB, "LAR", Instruction::LAR, AddressingMode::AbsoluteY, 3, 4, true, false),
+
+        Opcode::new(0xA7, "LAX", Instruction::LAX, AddressingMode::ZeroPage, 2, 3, false, false),
+        Opcode::new(0xB7, "LAX", Instruction::LAX, AddressingMode::ZeroPageY, 2, 4, false, false),
+        Opcode::new(0xAF, "LAX", Instruction::LAX, AddressingMode::Absolute, 3, 4, false, false),
+        Opcode::new(0xBF, "LAX", Instruction::LAX, AddressingMode::AbsoluteY, 3, 4, true, false),
+        Opcode::new(0xA3, "LAX", Instruction::LAX, AddressingMode::IndirectX, 2, 6, false, false),
+        Opcode::new(0xB3, "LAX", Instruction::LAX, AddressingMode::IndirectY, 2, 5, true, false),
+
+        Opcode::new(0x1A, "NOP", Instruction::NOP, AddressingMode::Implied, 1, 2, false, false),
+        Opcode::new(0x3A, "NOP", Instruction::NOP, AddressingMode::Implied, 1, 2, false, false),
+        Opcode::new(0x5A, "NOP", Instruction::NOP, AddressingMode::Implied, 1, 2, false, false),
+        Opcode::new(0x7A, "NOP", Instruction::NOP, AddressingMode::Implied, 1, 2, false, false),
+        Opcode::new(0xDA, "NOP", Instruction::NOP, AddressingMode::Implied, 1, 2, false, false),
+        Opcode::new(0xFA, "NOP", Instruction::NOP, AddressingMode::Implied, 1, 2, false, false),
+
+        Opcode::new(0x27, "RLA", Instruction::RLA, AddressingMode::ZeroPage, 2, 5, false, false),
+        Opcode::new(0x37, "RLA", Instruction::RLA, AddressingMode::ZeroPageX, 2, 6, false, false),
+        Opcode::new(0x2F, "RLA", Instruction::RLA, AddressingMode::Absolute, 3, 6, false, false),
+        Opcode::new(0x3F, "RLA", Instruction::RLA, AddressingMode::AbsoluteX, 3, 7, false, false),
+        Opcode::new(0x3B, "RLA", Instruction::RLA, AddressingMode::AbsoluteY, 3, 7, false, false),
+        Opcode::new(0x23, "RLA", Instruction::RLA, AddressingMode::IndirectX, 2, 8, false, false),
+        Opcode::new(0x33, "RLA", Instruction::RLA, AddressingMode::IndirectY, 2, 8, false, false),
+
+        Opcode::new(0x67, "RRA", Instruction::RRA, AddressingMode::ZeroPage, 2, 5, false, false),
+        Opcode::new(0x77, "RRA", Instruction::RRA, AddressingMode::ZeroPageX, 2, 6, false, false),
+        Opcode::new(0x6F, "RRA", Instruction::RRA, AddressingMode::Absolute, 3, 6, false, false),
+        Opcode::new(0x7F, "RRA", Instruction::RRA, AddressingMode::AbsoluteX, 3, 7, false, false),
+        Opcode::new(0x7B, "RRA", Instruction::RRA, AddressingMode::AbsoluteY, 3, 7, false, false),
+        Opcode::new(0x63, "RRA", Instruction::RRA, AddressingMode::IndirectX, 2, 8, false, false),
+        Opcode::new(0x73, "RRA", Instruction::RRA, AddressingMode::IndirectY, 2, 8, false, false),
+
+        Opcode::new(0xEB, "SBC", Instruction::SBC, AddressingMode::Immediate, 2, 2, false, false),
+
+        Opcode::new(0x07, "SLO", Instruction::SLO, AddressingMode::ZeroPage, 2, 5, false, false),
+        Opcode::new(0x17, "SLO", Instruction::SLO, AddressingMode::ZeroPageX, 2, 6, false, false),
+        Opcode::new(0x0F, "SLO", Instruction::SLO, AddressingMode::Absolute, 3, 6, false, false),
+        Opcode::new(0x1F, "SLO", Instruction::SLO, AddressingMode::AbsoluteX, 3, 7, false, false),
+        Opcode::new(0x1B, "SLO", Instruction::SLO, AddressingMode::AbsoluteY, 3, 7, false, false),
+        Opcode::new(0x03, "SLO", Instruction::SLO, AddressingMode::IndirectX, 2, 8, false, false),
+        Opcode::new(0x13, "SLO", Instruction::SLO, AddressingMode::IndirectY, 2, 8, false, false),
+
+        Opcode::new(0x47, "SRE", Instruction::SRE, AddressingMode::ZeroPage, 2, 5, false, false),
+        Opcode::new(0x57, "SRE", Instruction::SRE, AddressingMode::ZeroPageX, 2, 6, false, false),
+        Opcode::new(0x4F, "SRE", Instruction::SRE, AddressingMode::Absolute, 3, 6, false, false),
+        Opcode::new(0x5F, "SRE", Instruction::SRE, AddressingMode::AbsoluteX, 3, 7, false, false),
+        Opcode::new(0x5B, "SRE", Instruction::SRE, AddressingMode::AbsoluteY, 3, 7, false, false),
+        Opcode::new(0x43, "SRE", Instruction::SRE, AddressingMode::IndirectX, 2, 8, false, false),
+        Opcode::new(0x53, "SRE", Instruction::SRE, AddressingMode::IndirectY, 2, 8, false, false),
+
+        Opcode::new(0x9E, "SXA", Instruction::SXA, AddressingMode::AbsoluteY, 3, 5, false, false),
+        Opcode::new(0x9C, "SYA", Instruction::SYA, AddressingMode::AbsoluteX, 3, 5, false, false),
+
+        Opcode::new(0x0C, "TOP", Instruction::TOP, AddressingMode::Absolute, 3, 4, false, false),
+        Opcode::new(0x1C, "TOP", Instruction::TOP, AddressingMode::AbsoluteX, 3, 4, true, false),
+        Opcode::new(0x3C, "TOP", Instruction::TOP, AddressingMode::AbsoluteX, 3, 4, true, false),
+        Opcode::new(0x5C, "TOP", Instruction::TOP, AddressingMode::AbsoluteX, 3, 4, true, false),
+        Opcode::new(0x7C, "TOP", Instruction::TOP, AddressingMode::AbsoluteX, 3, 4, true, false),
+        Opcode::new(0xDC, "TOP", Instruction::TOP, AddressingMode::AbsoluteX, 3, 4, true, false),
+        Opcode::new(0xFC, "TOP", Instruction::TOP, AddressingMode::AbsoluteX, 3, 4, true, false),
+
+        Opcode::new(0x8B, "XAA", Instruction::XAA, AddressingMode::Immediate, 2, 2, false, false),
+        Opcode::new(0x9B, "XAS", Instruction::XAS, AddressingMode::AbsoluteY, 3, 5, false, false),
     ];
 
     pub static ref OPCODES_MAP: HashMap<u8, &'static Opcode> = {

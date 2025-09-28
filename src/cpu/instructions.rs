@@ -80,6 +80,30 @@ pub enum Instruction {
     BRK, // Force Interrupt
     NOP, // No Operation
     RTI, // Return from Interrupt
+
+    // Undocumented
+    AAC, // AND with Carry
+    AAX, // Store Accumulator and X Register
+    ARR, // AND then Rotate Right
+    ASR, // AND then Logical Shift Right
+    ATX, // Load X Register and Accumulator
+    AXA, // Store Accumulator AND X Register AND High Byte
+    AXS, // Subtract from X Register
+    DCP, // Decrement and Compare
+    DOP, // Double NOP
+    ISC, // Increment and Subtract with Carry
+    KIL, // Kill/Jam Processor
+    LAR, // Load Accumulator, X Register and Stack Pointer
+    LAX, // Load Accumulator and X Register
+    RLA, // Rotate Left and AND
+    RRA, // Rotate Right and Add
+    SLO, // Shift Left and OR
+    SRE, // Shift Right and EOR
+    SXA, // Store X Register and High Byte
+    SYA, // Store Y Register and High Byte
+    TOP, // Triple NOP
+    XAA, // Transfer X Register to Accumulator
+    XAS, // Transfer Accumulator AND X Register to Stack Pointer
 }
 
 impl Instruction {
@@ -187,6 +211,32 @@ impl Cpu {
             Instruction::BRK => self.brk(),
             Instruction::NOP => {}
             Instruction::RTI => self.rti(),
+
+            // Undocumented
+            Instruction::AAC => self.aac(operand_pc),
+            Instruction::AAX => self.aax(op.mode, operand_pc),
+            Instruction::ARR => self.arr(operand_pc),
+            Instruction::ASR => self.asr(operand_pc),
+            Instruction::ATX => self.atx(operand_pc),
+            Instruction::AXA => self.axa(op.mode, operand_pc),
+            Instruction::AXS => self.axs(operand_pc),
+            Instruction::DCP => self.dcp(op.mode, operand_pc),
+            Instruction::DOP => {
+                self.read_operand(op.mode, operand_pc);
+            }
+            Instruction::ISC => self.isc(op.mode, operand_pc),
+            Instruction::KIL => self.kil(),
+            Instruction::LAR => self.lar(op.mode, operand_pc),
+            Instruction::LAX => self.lax(op.mode, operand_pc),
+            Instruction::RLA => self.rla(op.mode, operand_pc),
+            Instruction::RRA => self.rra(op.mode, operand_pc),
+            Instruction::SLO => self.slo(op.mode, operand_pc),
+            Instruction::SRE => self.sre(op.mode, operand_pc),
+            Instruction::SXA => self.sxa(op.mode, operand_pc),
+            Instruction::SYA => self.sya(op.mode, operand_pc),
+            Instruction::TOP => self.top(op.mode, operand_pc),
+            Instruction::XAA => self.xaa(op.mode, operand_pc),
+            Instruction::XAS => self.xas(op.mode, operand_pc),
         }
     }
 
@@ -572,6 +622,209 @@ impl Cpu {
         self.status = StatusFlags::from_bits_truncate(status & 0xEF) | StatusFlags::UNUSED;
 
         self.pc = self.stack_pop_u16();
+    }
+
+    fn aac(&mut self, operand_pc: u16) {
+        let value = self.read(operand_pc);
+        self.set_register_a(value & self.a);
+        self.status.set(StatusFlags::CARRY, self.status.contains(StatusFlags::NEGATIVE));
+    }
+
+    fn aax(&mut self, mode: AddressingMode, operand_pc: u16) {
+        let (address, _) = self.get_operand_address(mode, operand_pc);
+        self.write(address, self.a & self.x);
+    }
+
+    fn arr(&mut self, operand_pc: u16) {
+        let value = self.read(operand_pc);
+        self.set_register_a(value & self.a);
+        self.ror_accumulator();
+
+        let result = self.a;
+        let bit_5 = (result >> 5) & 1;
+        let bit_6 = (result >> 6) & 1;
+
+        self.status.set(StatusFlags::CARRY, bit_6 == 1);
+        self.status.set(StatusFlags::OVERFLOW, bit_5 ^ bit_6 == 1);
+        self.set_zero_and_negative_flags(result);
+    }
+
+    fn asr(&mut self, operand_pc: u16) {
+        let value = self.read(operand_pc);
+        self.set_register_a(value & self.a);
+        self.lsr_accumulator();
+    }
+
+    fn atx(&mut self, operand_pc: u16) {
+        self.lda(AddressingMode::Immediate, operand_pc);
+        self.tax();
+    }
+
+    fn axa(&mut self, mode: AddressingMode, operand_pc: u16) {
+        let (address, _) = self.get_operand_address(mode, operand_pc);
+
+        let result = self.a & self.x & (address >> 8) as u8;
+        self.write(address, result);
+    }
+
+    fn axs(&mut self, operand_pc: u16) {
+        let value = self.read(operand_pc);
+
+        let a_and_x = self.a & self.x;
+        let result = a_and_x.wrapping_sub(value);
+
+        self.status.set(StatusFlags::CARRY, value <= a_and_x);
+        self.set_register_x(result);
+    }
+
+    fn dcp(&mut self, mode: AddressingMode, operand_pc: u16) {
+        let (address, _) = self.get_operand_address(mode, operand_pc);
+        let value = self.read(address);
+
+        let result = value.wrapping_sub(1);
+        self.write(address, result);
+
+        self.status.set(StatusFlags::CARRY, result <= self.a);
+        self.set_zero_and_negative_flags(self.a.wrapping_sub(result));
+    }
+
+    fn isc(&mut self, mode: AddressingMode, operand_pc: u16) {
+        let (address, _) = self.get_operand_address(mode, operand_pc);
+        let value = self.read(address);
+        let result = value.wrapping_add(1);
+
+        self.write(address, result);
+        self.set_zero_and_negative_flags(result);
+        self.add_value_to_register_a((result as i8).wrapping_neg().wrapping_sub(1) as u8);
+    }
+
+    fn kil(&mut self) {
+        self.halted = true;
+    }
+
+    fn lar(&mut self, mode: AddressingMode, operand_pc: u16) {
+        let (value, page_crossed) = self.read_operand(mode, operand_pc);
+
+        let result = value & self.sp;
+        self.a = result;
+        self.x = result;
+        self.sp = result;
+        self.set_zero_and_negative_flags(result);
+
+        if page_crossed {
+            self.cycles_remaining += 1;
+        }
+    }
+
+    fn lax(&mut self, mode: AddressingMode, operand_pc: u16) {
+        let (value, page_crossed) = self.read_operand(mode, operand_pc);
+
+        self.set_register_a(value);
+        self.x = self.a;
+
+        if page_crossed {
+            self.cycles_remaining += 1;
+        }
+    }
+
+    fn rla(&mut self, mode: AddressingMode, operand_pc: u16) {
+        let (address, _) = self.get_operand_address(mode, operand_pc);
+        let mut result = self.read(address);
+        let carry = self.status.contains(StatusFlags::CARRY);
+
+        self.status.set(StatusFlags::CARRY, result >> 7 == 1);
+
+        result <<= 1;
+        if carry {
+            result |= 1;
+        }
+        self.write(address, result);
+        self.set_zero_and_negative_flags(result);
+
+        self.set_register_a(result & self.a);
+    }
+
+    fn rra(&mut self, mode: AddressingMode, operand_pc: u16) {
+        let (address, _) = self.get_operand_address(mode, operand_pc);
+        let mut result = self.read(address);
+        let carry = self.status.contains(StatusFlags::CARRY);
+
+        self.status.set(StatusFlags::CARRY, result & 1 == 1);
+
+        result >>= 1;
+        if carry {
+            result |= 0x80;
+        }
+        self.write(address, result);
+        self.set_zero_and_negative_flags(result);
+
+        self.add_value_to_register_a(result);
+    }
+
+    fn slo(&mut self, mode: AddressingMode, operand_pc: u16) {
+        let (address, _) = self.get_operand_address(mode, operand_pc);
+        let mut result = self.read(address);
+
+        self.status.set(StatusFlags::CARRY, result >> 7 == 1);
+
+        result <<= 1;
+        self.write(address, result);
+        self.set_zero_and_negative_flags(result);
+
+        self.set_register_a(result | self.a);
+    }
+
+    fn sre(&mut self, mode: AddressingMode, operand_pc: u16) {
+        let (address, _) = self.get_operand_address(mode, operand_pc);
+        let mut result = self.read(address);
+
+        self.status.set(StatusFlags::CARRY, result & 1 == 1);
+
+        result >>= 1;
+        self.write(address, result);
+        self.set_zero_and_negative_flags(result);
+
+        self.set_register_a(result ^ self.a);
+    }
+
+    fn sxa(&mut self, mode: AddressingMode, operand_pc: u16) {
+        let (address, _) = self.get_operand_address(mode, operand_pc);
+
+        let result = self.x & ((address >> 8) as u8 + 1);
+        self.write(address, result);
+    }
+
+    fn sya(&mut self, mode: AddressingMode, operand_pc: u16) {
+        let (address, _) = self.get_operand_address(mode, operand_pc);
+
+        let result = self.y & ((address >> 8) as u8 + 1);
+        self.write(address, result);
+    }
+
+    fn top(&mut self, mode: AddressingMode, operand_pc: u16) {
+        let (_, page_crossed) = self.read_operand(mode, operand_pc);
+
+        if page_crossed {
+            self.cycles_remaining += 1;
+        }
+    }
+
+    fn xaa(&mut self, mode: AddressingMode, operand_pc: u16) {
+        self.a = self.x;
+        self.set_zero_and_negative_flags(self.a);
+
+        let (value, _) = self.read_operand(mode, operand_pc);
+        self.set_register_a(value & self.a);
+    }
+
+    fn xas(&mut self, mode: AddressingMode, operand_pc: u16) {
+        let (address, _) = self.get_operand_address(mode, operand_pc);
+
+        let value = self.a & self.x;
+        self.sp = value;
+
+        let value = ((address >> 8) as u8 + 1) & self.sp;
+        self.write(address, value);
     }
 
     fn add_value_to_register_a(&mut self, value: u8) {

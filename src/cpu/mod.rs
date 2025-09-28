@@ -33,6 +33,7 @@ pub struct Cpu {
     pub x: u8,
     pub y: u8,
     pub status: StatusFlags,
+    pub halted: bool,
 
     pub bus: Bus,
 
@@ -51,6 +52,7 @@ impl Cpu {
             x: 0,
             y: 0,
             status: StatusFlags::INTERRUPT_DISABLE | StatusFlags::UNUSED,
+            halted: false,
             bus,
             cycles: 0,
             current_instruction: None,
@@ -63,6 +65,7 @@ impl Cpu {
         self.x = 0;
         self.y = 0;
         self.status = StatusFlags::INTERRUPT_DISABLE | StatusFlags::UNUSED;
+        self.halted = false;
 
         self.pc = self.read_u16(0xFFFC);
         self.cycles += 7;
@@ -73,6 +76,10 @@ impl Cpu {
         F: FnMut(&mut Cpu),
     {
         loop {
+            if self.halted {
+                break;
+            }
+
             callback(self);
 
             self.clock(); // First clock to fetch the next instruction

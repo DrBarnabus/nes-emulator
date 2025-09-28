@@ -1,10 +1,11 @@
 pub mod bus;
 pub mod cpu;
-mod rom;
+pub mod rom;
 
 use bus::Bus;
 use cpu::Cpu;
 use cpu::mem::Mem;
+use cpu::trace::trace;
 use rand::Rng;
 use rom::Rom;
 use sdl2::EventPump;
@@ -93,6 +94,8 @@ fn main() {
     let mut rng = rand::rng();
 
     cpu.run(|cpu| {
+        println!("{}", trace(cpu));
+
         handle_user_input(cpu, &mut event_pump);
         cpu.write(0xfe, rng.random_range(1..16));
 

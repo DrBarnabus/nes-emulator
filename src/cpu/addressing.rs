@@ -1,7 +1,7 @@
 use super::Cpu;
 use crate::cpu::mem::Mem;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum AddressingMode {
     Implied,
     Accumulator,
@@ -19,7 +19,7 @@ pub enum AddressingMode {
 }
 
 impl Cpu {
-    pub fn get_operand_address(&mut self, mode: AddressingMode, pc: u16) -> (u16, bool) {
+    pub fn get_operand_address(&self, mode: AddressingMode, pc: u16) -> (u16, bool) {
         match mode {
             AddressingMode::Implied | AddressingMode::Accumulator => (0, false), // No address needed
             AddressingMode::Immediate => (pc, false),                            // The operand is the value (not an address)
@@ -37,7 +37,7 @@ impl Cpu {
             AddressingMode::ZeroPageY => {
                 // Zero page address + Y register (wraps within 0x0000-0x00FF)
                 let base = self.read(pc);
-                let address = base.wrapping_add(self.x) as u16;
+                let address = base.wrapping_add(self.y) as u16;
                 (address, false)
             }
             AddressingMode::Relative => {

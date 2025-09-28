@@ -1,11 +1,13 @@
-mod addressing;
-mod instructions;
+pub mod addressing;
+pub mod instructions;
 pub mod mem;
+pub mod opcode;
+pub mod trace;
 
 use super::bus::Bus;
 use addressing::AddressingMode;
-use instructions::Opcode;
 use mem::Mem;
+use opcode::{OPCODES_MAP, Opcode};
 
 bitflags::bitflags! {
     #[derive(Clone, Copy)]
@@ -63,6 +65,7 @@ impl Cpu {
         self.status = StatusFlags::INTERRUPT_DISABLE | StatusFlags::UNUSED;
 
         self.pc = self.read_u16(0xFFFC);
+        self.cycles += 7;
     }
 
     pub fn run<F>(&mut self, mut callback: F)
@@ -70,12 +73,12 @@ impl Cpu {
         F: FnMut(&mut Cpu),
     {
         loop {
+            callback(self);
+
             self.clock(); // First clock to fetch the next instruction
             while self.cycles_remaining > 0 {
                 self.clock();
             }
-
-            callback(self);
         }
     }
 
@@ -87,16 +90,16 @@ impl Cpu {
                 let opcode = self.read(self.pc);
                 self.pc += 1; // Move past the opcode byte
 
-                let op = self.decode_opcode(opcode);
+                let opcode = **OPCODES_MAP.get(&opcode).unwrap_or_else(|| panic!("Unknown opcode: {:#2X}", opcode));
                 let operand_pc = self.pc;
 
                 // Advance PC past the operands (unless it's a control flow instruction)
-                if !self.is_control_flow_instruction(op.instruction) {
-                    self.pc += (op.bytes - 1) as u16;
+                if !opcode.instruction.is_control_flow() {
+                    self.pc += (opcode.size_bytes - 1) as u16;
                 }
 
-                self.cycles_remaining = op.cycles;
-                self.current_instruction = Some((op, operand_pc));
+                self.cycles_remaining = opcode.cycles;
+                self.current_instruction = Some((opcode, operand_pc));
             }
         }
 
@@ -110,7 +113,7 @@ impl Cpu {
         self.cycles += 1;
     }
 
-    pub fn read_operand(&mut self, mode: AddressingMode, pc: u16) -> (u8, bool) {
+    pub fn read_operand(&self, mode: AddressingMode, pc: u16) -> (u8, bool) {
         match mode {
             AddressingMode::Accumulator => (self.a, false),
             AddressingMode::Immediate => (self.read(pc), false),

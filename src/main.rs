@@ -1,11 +1,12 @@
 pub mod bus;
 pub mod cpu;
+pub mod emulator;
 pub mod rom;
 
-use bus::Bus;
 use cpu::Cpu;
 use cpu::mem::Mem;
 use cpu::trace::trace;
+use emulator::Emulator;
 use rand::Rng;
 use rom::Rom;
 use sdl2::EventPump;
@@ -78,33 +79,29 @@ fn main() {
     let video_subsystem = sdl_context.video().unwrap();
     let window = video_subsystem.window("6502 Snake", 32 * 10, 32 * 10).position_centered().build().unwrap();
 
-    let mut canvas = window.into_canvas().present_vsync().build().unwrap();
+    let mut canvas = window.into_canvas().build().unwrap();
     let mut event_pump = sdl_context.event_pump().unwrap();
     canvas.set_scale(10.0, 10.0).unwrap();
 
     let creator = canvas.texture_creator();
     let mut texture = creator.create_texture_target(PixelFormatEnum::RGB24, 32, 32).unwrap();
 
-    let rom = Rom::load("snake.nes").unwrap();
-    let bus = Bus::new(rom);
-    let mut cpu = Cpu::new(bus);
-    cpu.reset();
-
     let mut screen_state = [0u8; 32 * 3 * 32];
     let mut rng = rand::rng();
 
-    cpu.run(|cpu| {
+    let rom = Rom::load("snake.nes").unwrap();
+    let mut emulator = Emulator::new(rom);
+    emulator.run(|cpu| {
         println!("{}", trace(cpu));
 
-        handle_user_input(cpu, &mut event_pump);
         cpu.write(0xfe, rng.random_range(1..16));
+
+        handle_user_input(cpu, &mut event_pump);
 
         if read_screen_state(cpu, &mut screen_state) {
             texture.update(None, &screen_state, 32 * 3).unwrap();
             canvas.copy(&texture, None, None).unwrap();
-            canvas.present();
         }
-
-        std::thread::sleep(std::time::Duration::new(0, 70_000));
+        canvas.present();
     });
 }

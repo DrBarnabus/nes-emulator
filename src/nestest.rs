@@ -5,10 +5,12 @@ pub mod rom;
 use bus::Bus;
 use cpu::{Cpu, mem::Mem, trace::trace};
 use rom::Rom;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 fn main() {
     let rom = Rom::load("nestest.nes").unwrap();
-    let bus = Bus::new(rom);
+    let bus = Rc::new(RefCell::new(Bus::new(rom)));
     let mut cpu = Cpu::new(bus);
     cpu.reset();
 

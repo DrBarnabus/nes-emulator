@@ -8,6 +8,8 @@ use super::bus::Bus;
 use addressing::AddressingMode;
 use mem::Mem;
 use opcode::{OPCODES_MAP, Opcode};
+use std::cell::RefCell;
+use std::rc::Rc;
 
 bitflags::bitflags! {
     #[derive(Clone, Copy)]
@@ -35,16 +37,15 @@ pub struct Cpu {
     pub status: StatusFlags,
     pub halted: bool,
 
-    pub bus: Bus,
+    bus: Rc<RefCell<Bus>>,
 
     cycles: u64,
-
     current_instruction: Option<(Opcode, u16)>,
     cycles_remaining: u8,
 }
 
 impl Cpu {
-    pub fn new(bus: Bus) -> Self {
+    pub fn new(bus: Rc<RefCell<Bus>>) -> Self {
         Self {
             pc: 0,
             sp: STACK_RESET,
@@ -71,6 +72,17 @@ impl Cpu {
         self.cycles += 7;
     }
 
+    pub fn step(&mut self) -> u64 {
+        let start_cycles = self.cycles;
+
+        self.clock(); // First clock to fetch the next instruction
+        while self.cycles_remaining > 0 {
+            self.clock();
+        }
+
+        self.cycles - start_cycles
+    }
+
     pub fn run<F>(&mut self, mut callback: F)
     where
         F: FnMut(&mut Cpu),
@@ -81,11 +93,7 @@ impl Cpu {
             }
 
             callback(self);
-
-            self.clock(); // First clock to fetch the next instruction
-            while self.cycles_remaining > 0 {
-                self.clock();
-            }
+            self.step();
         }
     }
 
@@ -191,9 +199,9 @@ impl Cpu {
     }
 
     fn handle_interrupts(&mut self) {
-        if self.bus.poll_nmi() {
+        if self.bus.borrow_mut().poll_nmi() {
             self.handle_interrupt(0xFFFA); // Jump to NMI vector $FFFA-$FFFB
-        } else if self.bus.poll_irq() && !self.status.contains(StatusFlags::INTERRUPT_DISABLE) {
+        } else if self.bus.borrow_mut().poll_irq() && !self.status.contains(StatusFlags::INTERRUPT_DISABLE) {
             self.handle_interrupt(0xFFFE); // Jump to IRQ vector $FFFE-$FFFF
         }
     }

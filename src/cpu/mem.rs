@@ -20,10 +20,10 @@ pub trait Mem {
 
 impl Mem for Cpu {
     fn read(&self, address: u16) -> u8 {
-        self.bus.read(address)
+        self.bus.borrow().read(address)
     }
 
     fn write(&mut self, address: u16, value: u8) {
-        self.bus.write(address, value);
+        self.bus.borrow_mut().write(address, value);
     }
 }

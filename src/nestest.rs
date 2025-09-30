@@ -10,7 +10,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 fn main() {
-    let rom = Rom::load("nestest.nes").unwrap();
+    let rom = Rom::load("test_roms/nestest.nes").unwrap();
     let bus = Rc::new(RefCell::new(Bus::new(rom)));
     let mut cpu = Cpu::new(Rc::clone(&bus));
     cpu.reset();

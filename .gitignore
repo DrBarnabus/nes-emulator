@@ -4,4 +4,7 @@
 SDL2.dll
 SDL2.lib
 
-/test_roms
+/test_roms/*
+!/test_roms/nestest.log
+!/test_roms/nestest.nes
+!/test_roms/nestest.txt

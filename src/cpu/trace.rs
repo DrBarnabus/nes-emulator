@@ -3,7 +3,7 @@ use crate::cpu::addressing::AddressingMode;
 use crate::cpu::mem::Mem;
 use crate::cpu::opcode::OPCODES_MAP;
 
-pub fn trace(cpu: &Cpu) -> String {
+pub fn trace(cpu: &mut Cpu) -> String {
     let opcode_pc = cpu.pc;
     let opcode = cpu.read(opcode_pc);
     let opcode = **OPCODES_MAP.get(&opcode).unwrap_or_else(|| panic!("Unknown opcode: {:#2X}", opcode));
@@ -111,9 +111,14 @@ pub fn trace(cpu: &Cpu) -> String {
     };
 
     let asm_str = format!("{:04x}  {:8} {: >4} {}", opcode_pc, hex_str, mnemonic, tmp).trim().to_string();
+
+    let bus = cpu.bus.borrow();
+    let ppu_scanline = bus.ppu.scanline;
+    let ppu_cycle = bus.ppu.cycle;
+
     format!(
-        "{:47} A:{:02x} X:{:02x} Y:{:02x} P:{:02x} SP:{:02x} CYC:{}",
-        asm_str, cpu.a, cpu.x, cpu.y, cpu.status, cpu.sp, cpu.cycles
+        "{:47} A:{:02x} X:{:02x} Y:{:02x} P:{:02x} SP:{:02x} PPU:{:3},{:3} CYC:{}",
+        asm_str, cpu.a, cpu.x, cpu.y, cpu.status, cpu.sp, ppu_scanline, ppu_cycle, cpu.cycles
     )
     .to_ascii_uppercase()
 }

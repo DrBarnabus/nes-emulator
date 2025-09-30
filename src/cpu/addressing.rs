@@ -19,7 +19,7 @@ pub enum AddressingMode {
 }
 
 impl Cpu {
-    pub fn get_operand_address(&self, mode: AddressingMode, pc: u16) -> (u16, bool) {
+    pub fn get_operand_address(&mut self, mode: AddressingMode, pc: u16) -> (u16, bool) {
         match mode {
             AddressingMode::Implied | AddressingMode::Accumulator => (0, false), // No address needed
             AddressingMode::Immediate => (pc, false),                            // The operand is the value (not an address)

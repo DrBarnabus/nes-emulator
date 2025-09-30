@@ -1,5 +1,6 @@
 pub mod bus;
 pub mod cpu;
+pub mod ppu;
 pub mod rom;
 
 use bus::Bus;
@@ -11,13 +12,33 @@ use std::rc::Rc;
 fn main() {
     let rom = Rom::load("nestest.nes").unwrap();
     let bus = Rc::new(RefCell::new(Bus::new(rom)));
-    let mut cpu = Cpu::new(bus);
+    let mut cpu = Cpu::new(Rc::clone(&bus));
     cpu.reset();
 
     cpu.pc = 0xC000;
-    cpu.run(|cpu| {
-        println!("{}", trace(cpu));
-    });
+
+    // Tick PPU for the reset cycles (7 CPU cycles = 21 PPU cycles)
+    for _ in 0..21 {
+        bus.borrow_mut().ppu.tick();
+    }
+
+    loop {
+        if cpu.halted {
+           break;
+        }
+
+        println!("{}", trace(&mut cpu));
+
+        let cpu_cycles = cpu.step();
+        for _ in 0..cpu_cycles * 3 {
+            let mut bus = bus.borrow_mut();
+            bus.ppu.tick();
+
+            if bus.ppu.poll_nmi() {
+                bus.trigger_nmi();
+            }
+        }
+    }
 
     let test_result = cpu.read(0x0002);
     let error_detail = cpu.read(0x0003);

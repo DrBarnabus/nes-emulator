@@ -1,10 +1,10 @@
 use crate::cpu::Cpu;
 
 pub trait Mem {
-    fn read(&self, address: u16) -> u8;
+    fn read(&mut self, address: u16) -> u8;
     fn write(&mut self, address: u16, value: u8);
 
-    fn read_u16(&self, address: u16) -> u16 {
+    fn read_u16(&mut self, address: u16) -> u16 {
         let low_byte = self.read(address) as u16;
         let high_byte = self.read(address + 1) as u16;
         (high_byte << 8) | low_byte
@@ -19,8 +19,8 @@ pub trait Mem {
 }
 
 impl Mem for Cpu {
-    fn read(&self, address: u16) -> u8 {
-        self.bus.borrow().read(address)
+    fn read(&mut self, address: u16) -> u8 {
+        self.bus.borrow_mut().read(address)
     }
 
     fn write(&mut self, address: u16, value: u8) {

@@ -37,9 +37,9 @@ pub struct Cpu {
     pub status: StatusFlags,
     pub halted: bool,
 
-    bus: Rc<RefCell<Bus>>,
+    pub bus: Rc<RefCell<Bus>>,
 
-    cycles: u64,
+    pub cycles: u64,
     current_instruction: Option<(Opcode, u16)>,
     cycles_remaining: u8,
 }
@@ -128,7 +128,7 @@ impl Cpu {
         self.cycles += 1;
     }
 
-    pub fn read_operand(&self, mode: AddressingMode, pc: u16) -> (u8, bool) {
+    pub fn read_operand(&mut self, mode: AddressingMode, pc: u16) -> (u8, bool) {
         match mode {
             AddressingMode::Accumulator => (self.a, false),
             AddressingMode::Immediate => (self.read(pc), false),

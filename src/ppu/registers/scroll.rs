@@ -31,5 +31,5 @@ impl PpuScrollRegister {
 impl Default for PpuScrollRegister {
     fn default() -> Self {
         Self::new()
-    }   
+    }
 }

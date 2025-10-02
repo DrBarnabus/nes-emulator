@@ -24,7 +24,7 @@ fn main() {
 
     loop {
         if cpu.halted {
-           break;
+            break;
         }
 
         println!("{}", trace(&mut cpu));

@@ -59,12 +59,14 @@ fn main() {
             // Update FPS counter every second
             if elapsed.as_secs() >= 1 {
                 let fps = frame_count as f64 / elapsed.as_secs_f64();
-                canvas.window_mut().set_title(&format!("NES Emulator - FPS: {:.2} - CPU Cycle: {}", fps, cpu.cycles)).unwrap();
+                canvas
+                    .window_mut()
+                    .set_title(&format!("NES Emulator - FPS: {:.2} - CPU Cycle: {}", fps, cpu.cycles))
+                    .unwrap();
 
                 frame_count = 0;
                 last_time = std::time::Instant::now();
             }
-        }
+        },
     );
 }
-

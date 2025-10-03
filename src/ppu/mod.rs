@@ -11,11 +11,11 @@ pub struct Ppu {
     chr_rom: Vec<u8>,
     mirroring: Mirroring,
 
-    ctrl: PpuCtrlRegister,
-    mask: PpuMaskRegister,
-    status: PpuStatusRegister,
-    scroll: PpuScrollRegister,
-    addr: PpuAddrRegister,
+    pub ctrl: PpuCtrlRegister,
+    pub mask: PpuMaskRegister,
+    pub status: PpuStatusRegister,
+    pub scroll: PpuScrollRegister,
+    pub addr: PpuAddrRegister,
 
     oam_addr: u8,
     oam_data: [u8; 256],

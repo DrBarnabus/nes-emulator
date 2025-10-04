@@ -40,7 +40,7 @@ pub fn render(ppu: &Ppu, frame: &mut Frame) {
         let tile = ppu.vram[i] as u16;
         let tile_column = i % 32;
         let tile_row = i / 32;
-        let tile = &ppu.chr_rom[(background_bank + tile * 16) as usize..=(background_bank + tile * 16 + 16) as usize];
+        let tile = &ppu.chr_rom[(background_bank + tile * 16) as usize..=(background_bank + tile * 16 + 15) as usize];
         let palette = background_palette(ppu, tile_column, tile_row);
 
         for y in 0..=7 {

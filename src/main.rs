@@ -271,7 +271,7 @@ fn create_rgb_texture(gl: &glow::Context, width: i32, height: i32) -> glow::Text
         gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_WRAP_S, glow::CLAMP_TO_EDGE as i32);
         gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_WRAP_T, glow::CLAMP_TO_EDGE as i32);
 
-        gl.tex_image_2d(glow::TEXTURE_2D, 0, glow::RGB as i32, width, height, 0, glow::RGB, glow::UNSIGNED_BYTE, None);
+        gl.tex_image_2d(glow::TEXTURE_2D, 0, glow::SRGB8 as i32, width, height, 0, glow::RGB, glow::UNSIGNED_BYTE, None);
 
         texture
     }

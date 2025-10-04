@@ -1,6 +1,7 @@
 pub mod bus;
 pub mod cpu;
 pub mod emulator;
+pub mod joypad;
 pub mod ppu;
 pub mod rom;
 
@@ -10,10 +11,12 @@ use glow::HasContext;
 use imgui::{Condition, Context};
 use imgui_glow_renderer::AutoRenderer;
 use imgui_sdl2_support::SdlPlatform;
+use joypad::JoypadButton;
 use ppu::render::frame::Frame;
 use rom::Rom;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
+use std::collections::HashMap;
 
 const NES_WIDTH: u32 = 256;
 const NES_HEIGHT: u32 = 240;
@@ -94,10 +97,20 @@ fn main() {
                         keycode: Some(Keycode::Escape),
                         ..
                     } => std::process::exit(0),
-                    Event::KeyDown {
-                        keycode: Some(Keycode::F12), ..
-                    } => debug_visible = !debug_visible,
-                    Event::KeyDown { keycode: Some(Keycode::P), .. } => active_palette = (active_palette + 1) & 0x07,
+                    Event::KeyDown { keycode: Some(keycode), .. } => match keycode {
+                        Keycode::F12 => debug_visible = !debug_visible,
+                        Keycode::P => active_palette = (active_palette + 1) & 0x07,
+                        _ => {
+                            if let Some(button) = KEY_MAP.get(&keycode) {
+                                cpu.bus.borrow_mut().joypad_1.set_button_state(*button, true)
+                            }
+                        }
+                    },
+                    Event::KeyUp { keycode: Some(keycode), .. } => {
+                        if let Some(button) = KEY_MAP.get(&keycode) {
+                            cpu.bus.borrow_mut().joypad_1.set_button_state(*button, false)
+                        }
+                    }
                     _ => {}
                 }
             }
@@ -173,6 +186,15 @@ fn main() {
                         if ui.collapsing_header("Performance", imgui::TreeNodeFlags::DEFAULT_OPEN) {
                             ui.text(format!("FPS: {:.1}", ui.io().framerate));
                             ui.text(format!("Frame time: {:.3}ms", ui.io().delta_time * 1000.0));
+                        }
+
+                        if ui.collapsing_header("Input", imgui::TreeNodeFlags::DEFAULT_OPEN) {
+                            text_bitflags_long(
+                                ui,
+                                "Joypad 1",
+                                ["R", "L", "D", "U", "START", "SELECT", "B", "A"],
+                                cpu.bus.borrow().joypad_1.button_states.bits(),
+                            );
                         }
 
                         if ui.collapsing_header("CPU Debug", imgui::TreeNodeFlags::DEFAULT_OPEN) {
@@ -369,4 +391,34 @@ fn text_bitflags(ui: &imgui::Ui, name: &str, labels: &str, bits: u8) {
             ui.text(ch.to_string());
         }
     }
+}
+
+fn text_bitflags_long(ui: &imgui::Ui, name: &str, labels: [&str; 8], bits: u8) {
+    ui.text(format!("{}: {:02X}", name, bits));
+
+    for (i, str) in labels.iter().enumerate() {
+        ui.same_line();
+
+        if (bits & (1 << (7 - i))) != 0 {
+            ui.text_colored([1.0, 0.0, 0.0, 1.0], str);
+        } else {
+            ui.text(str);
+        }
+    }
+}
+
+lazy_static::lazy_static! {
+    pub static ref KEY_MAP: HashMap<Keycode, JoypadButton> = {
+        let mut map = HashMap::new();
+        map.insert(Keycode::S, JoypadButton::A);
+        map.insert(Keycode::A, JoypadButton::B);
+        map.insert(Keycode::Q, JoypadButton::SELECT);
+        map.insert(Keycode::W, JoypadButton::START);
+        map.insert(Keycode::Up, JoypadButton::UP);
+        map.insert(Keycode::Down, JoypadButton::DOWN);
+        map.insert(Keycode::Left, JoypadButton::LEFT);
+        map.insert(Keycode::Right, JoypadButton::RIGHT);
+
+        map
+    };
 }

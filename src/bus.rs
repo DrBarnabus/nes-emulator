@@ -1,4 +1,5 @@
 use crate::cpu::mem::Mem;
+use crate::joypad::Joypad;
 use crate::ppu::Ppu;
 use crate::rom::Rom;
 
@@ -15,9 +16,11 @@ const PPU_SCROLL: u16 = 0x2005;
 const PPU_ADDR: u16 = 0x2006;
 const PPU_DATA: u16 = 0x2007;
 const PPU_MIRROR: u16 = 0x2008;
-
 const PPU_MIRROR_END: u16 = 0x3FFF;
 const PPU_OAM_DMA: u16 = 0x4014;
+
+const JOYPAD_1: u16 = 0x4016;
+const JOYPAD_2: u16 = 0x4017;
 
 const PRG_ROM: u16 = 0x8000;
 const PRG_ROM_END: u16 = 0xFFFF;
@@ -27,6 +30,7 @@ pub struct Bus {
     prg_rom: Vec<u8>,
 
     pub ppu: Ppu,
+    pub joypad_1: Joypad,
 
     // Interrupt lines
     pub nmi_pending: bool,
@@ -42,6 +46,7 @@ impl Bus {
             prg_rom: rom.prg_rom,
 
             ppu,
+            joypad_1: Joypad::new(),
 
             nmi_pending: false,
             irq_pending: false,
@@ -83,13 +88,18 @@ impl Mem for Bus {
         match address {
             RAM..=RAM_END => self.ram[(address & RAM_MASK) as usize],
             PPU_CTRL | PPU_MASK | PPU_OAM_ADDR | PPU_SCROLL | PPU_ADDR | PPU_OAM_DMA => {
-                println!("Cannot read from write-only PPU address, attempted to write {:02x}", address);
+                println!("Cannot read from write-only PPU address, attempted to read {:02x}", address);
                 0
             }
             PPU_STATUS => self.ppu.read_status(),
             PPU_OAM_DATA => self.ppu.read_oam_data(),
             PPU_DATA => self.ppu.read_data(),
             PPU_MIRROR..=PPU_MIRROR_END => self.read(address & 0x2007),
+            JOYPAD_1 => self.joypad_1.read(),
+            JOYPAD_2 => {
+                println!("Ignoring attempted memory access for joypad 2, attempted to read {:02x}", address);
+                0
+            }
             PRG_ROM..=PRG_ROM_END => self.read_prg_rom(address),
             _ => {
                 println!("Ignoring attempted memory access, attempted to read {:02x}", address);
@@ -118,6 +128,10 @@ impl Mem for Bus {
                 }
 
                 self.ppu.write_to_oam_dma(&buffer);
+            }
+            JOYPAD_1 => self.joypad_1.write(value),
+            JOYPAD_2 => {
+                println!("Ignoring attempted memory access for joypad 2, attempted to write {:02x}", address);
             }
             PRG_ROM..=PRG_ROM_END => panic!("Cannot write to PRG ROM, attempted to write {:02x}", address),
             _ => {

@@ -16,12 +16,24 @@ impl PpuCtrlRegister {
         Self::from_bits_truncate(0)
     }
 
+    pub fn update(&mut self, value: u8) {
+        *self = Self::from_bits_truncate(value);
+    }
+
     pub fn vram_add_increment(&self) -> u8 {
         if !self.contains(Self::VRAM_ADD_INCREMENT) { 1 } else { 32 }
     }
 
-    pub fn update(&mut self, value: u8) {
-        *self = Self::from_bits_truncate(value);
+    pub fn sprite_pattern_addr(&self) -> u16 {
+        if self.contains(Self::SPRITE_PATTERN_ADDR) { 0x1000 } else { 0x0000 }
+    }
+
+    pub fn background_pattern_addr(&self) -> u16 {
+        if self.contains(Self::BACKGROUND_PATTERN_ADDR) { 0x1000 } else { 0x0000 }
+    }
+
+    pub fn sprite_size(&self) -> u8 {
+        if self.contains(Self::SPRITE_SIZE) { 16 } else { 8 }
     }
 }
 

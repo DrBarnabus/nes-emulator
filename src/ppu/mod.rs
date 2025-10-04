@@ -1,4 +1,5 @@
 pub mod registers;
+pub mod render;
 
 use super::rom::Mirroring;
 use crate::ppu::registers::addr::PpuAddrRegister;
@@ -8,7 +9,7 @@ use crate::ppu::registers::scroll::PpuScrollRegister;
 use crate::ppu::registers::status::PpuStatusRegister;
 
 pub struct Ppu {
-    chr_rom: Vec<u8>,
+    pub chr_rom: Vec<u8>,
     mirroring: Mirroring,
 
     pub ctrl: PpuCtrlRegister,
@@ -19,7 +20,7 @@ pub struct Ppu {
 
     oam_addr: u8,
     oam_data: [u8; 256],
-    palette_table: [u8; 32],
+    pub palette_table: [u8; 32],
     vram: [u8; 2048], // 8KB VRAM
     internal_data_buffer: u8,
 

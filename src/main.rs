@@ -10,6 +10,7 @@ use glow::HasContext;
 use imgui::{Condition, Context};
 use imgui_glow_renderer::AutoRenderer;
 use imgui_sdl2_support::SdlPlatform;
+use ppu::render::frame::Frame;
 use rom::Rom;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
@@ -66,31 +67,14 @@ fn main() {
     let mut imgui_renderer = AutoRenderer::new(gl, &mut imgui).unwrap();
 
     let gl = imgui_renderer.gl_context();
-    let nes_texture = unsafe {
-        let texture = gl.create_texture().unwrap();
-        gl.bind_texture(glow::TEXTURE_2D, Some(texture));
-
-        gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MIN_FILTER, glow::NEAREST as i32);
-        gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MAG_FILTER, glow::NEAREST as i32);
-        gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_WRAP_S, glow::CLAMP_TO_EDGE as i32);
-        gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_WRAP_T, glow::CLAMP_TO_EDGE as i32);
-
-        gl.tex_image_2d(
-            glow::TEXTURE_2D,
-            0,
-            glow::RGB as i32,
-            NES_WIDTH as i32,
-            NES_HEIGHT as i32,
-            0,
-            glow::RGB,
-            glow::UNSIGNED_BYTE,
-            None,
-        );
-
-        texture
-    };
+    let nes_texture = create_rgb_texture(gl, NES_WIDTH as i32, NES_HEIGHT as i32);
+    let palette_texture = create_rgb_texture(gl, 8, 4);
+    let pattern_table_textures = [create_rgb_texture(gl, 128, 128), create_rgb_texture(gl, 128, 128)];
 
     let mut debug_visible = args.debug;
+    let mut active_palette: u8 = 0;
+
+    let mut frame = Frame::new();
 
     let mut event_pump = sdl_context.event_pump().unwrap();
 
@@ -113,6 +97,7 @@ fn main() {
                     Event::KeyDown {
                         keycode: Some(Keycode::F12), ..
                     } => debug_visible = !debug_visible,
+                    Event::KeyDown { keycode: Some(Keycode::P), .. } => active_palette = (active_palette + 1) & 0x07,
                     _ => {}
                 }
             }
@@ -213,50 +198,37 @@ fn main() {
                             text_bitflags(ui, "STATUS", "VSO-----", ppu.status.bits());
                             ui.text(format!("SCROLL: {:02X} {:02X}", ppu.scroll.scroll_x, ppu.scroll.scroll_y));
                             ui.text(format!("ADDR: {:04X}", ppu.addr.get()));
-                        }
 
-                        fn text_bitflags(ui: &imgui::Ui, name: &str, labels: &str, bits: u8) {
-                            ui.text(format!("{}: {:02X}", name, bits));
+                            ui.separator();
 
-                            for (i, ch) in labels.chars().enumerate() {
-                                ui.same_line();
+                            ui.text("Palettes:");
+                            draw_palettes(ui, palette_texture, active_palette);
 
-                                if (bits & (1 << (7 - i))) != 0 {
-                                    ui.text_colored([1.0, 0.0, 0.0, 1.0], ch.to_string());
-                                } else {
-                                    ui.text(ch.to_string());
-                                }
-                            }
+                            ui.text("Pattern Tables:");
+                            draw_pattern_table(ui, pattern_table_textures[0], 128.0 * 2.5);
+                            draw_pattern_table(ui, pattern_table_textures[1], 128.0 * 2.5);
                         }
                     });
             }
 
-            unsafe {
-                imgui_renderer.gl_context().clear_color(0.0, 0.0, 0.0, 1.0);
-                imgui_renderer.gl_context().clear(glow::COLOR_BUFFER_BIT);
-            }
-
-            let seed = cpu.bus.borrow_mut().ppu.frame;
-
-            let mut nes_frame_data = vec![0; NES_WIDTH as usize * NES_HEIGHT as usize * 3];
-            for (i, frame_data) in nes_frame_data.iter_mut().enumerate() {
-                *frame_data = ((i as u64 * 2654435761) ^ (seed * 1103515245)) as u8;
-            }
-
             let gl = imgui_renderer.gl_context();
             unsafe {
-                gl.bind_texture(glow::TEXTURE_2D, Some(nes_texture));
-                gl.tex_sub_image_2d(
-                    glow::TEXTURE_2D,
-                    0,
-                    0,
-                    0,
-                    NES_WIDTH as i32,
-                    NES_HEIGHT as i32,
-                    glow::RGB,
-                    glow::UNSIGNED_BYTE,
-                    glow::PixelUnpackData::Slice(&nes_frame_data),
-                );
+                gl.clear_color(0.0, 0.0, 0.0, 1.0);
+                gl.clear(glow::COLOR_BUFFER_BIT);
+            }
+
+            let ppu = &cpu.bus.borrow_mut().ppu;
+            ppu::render::render(ppu, &mut frame);
+            update_rgb_texture(gl, nes_texture, NES_WIDTH as i32, NES_HEIGHT as i32, &frame.data);
+
+            if debug_visible {
+                let palette_data = populate_palette_texture(&ppu.palette_table);
+                update_rgb_texture(gl, palette_texture, 8, 4, &palette_data);
+
+                for (i, pattern_table_texture) in pattern_table_textures.iter().enumerate() {
+                    let pattern_table_data = populate_pattern_table_texture(i, &ppu.chr_rom, &ppu.palette_table, active_palette);
+                    update_rgb_texture(gl, *pattern_table_texture, 128, 128, &pattern_table_data);
+                }
             }
 
             let draw_data = imgui.render();
@@ -265,4 +237,136 @@ fn main() {
             window.gl_swap_window();
         },
     );
+}
+
+fn create_rgb_texture(gl: &glow::Context, width: i32, height: i32) -> glow::Texture {
+    unsafe {
+        let texture = gl.create_texture().unwrap();
+        gl.bind_texture(glow::TEXTURE_2D, Some(texture));
+
+        gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MIN_FILTER, glow::NEAREST as i32);
+        gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MAG_FILTER, glow::NEAREST as i32);
+        gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_WRAP_S, glow::CLAMP_TO_EDGE as i32);
+        gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_WRAP_T, glow::CLAMP_TO_EDGE as i32);
+
+        gl.tex_image_2d(glow::TEXTURE_2D, 0, glow::RGB as i32, width, height, 0, glow::RGB, glow::UNSIGNED_BYTE, None);
+
+        texture
+    }
+}
+
+fn update_rgb_texture(gl: &glow::Context, texture: glow::Texture, width: i32, height: i32, data: &[u8]) {
+    unsafe {
+        gl.bind_texture(glow::TEXTURE_2D, Some(texture));
+        gl.tex_sub_image_2d(
+            glow::TEXTURE_2D,
+            0,
+            0,
+            0,
+            width,
+            height,
+            glow::RGB,
+            glow::UNSIGNED_BYTE,
+            glow::PixelUnpackData::Slice(data),
+        );
+    }
+}
+
+fn populate_palette_texture(palette_table: &[u8; 32]) -> Vec<u8> {
+    let mut data = Vec::with_capacity(8 * 4 * 3);
+
+    for color_idx in 0..4 {
+        for palette_idx in 0..8 {
+            let palette_entry = palette_table[(palette_idx << 2) + color_idx];
+            let color = ppu::render::palette::SYSTEM_PALETTE_COLOURS[palette_entry as usize];
+            data.push(color.0);
+            data.push(color.1);
+            data.push(color.2);
+        }
+    }
+
+    data
+}
+
+fn populate_pattern_table_texture(pattern_table_idx: usize, chr_rom: &[u8], palette_table: &[u8; 32], active_palette: u8) -> Vec<u8> {
+    let mut data = vec![0; 128 * 128 * 3];
+
+    let bank = pattern_table_idx * 0x1000;
+
+    for tile_n in 0..256 {
+        let tile_y = (tile_n / 16) * 8;
+        let tile_x = (tile_n % 16) * 8;
+
+        let tile = &chr_rom[(bank + tile_n * 16)..=(bank + tile_n * 16 + 15)];
+
+        for y in 0..=7 {
+            let mut lower = tile[y];
+            let mut upper = tile[y + 8];
+
+            for x in (0..=7).rev() {
+                let value = (1 & upper) << 1 | (1 & lower);
+                upper >>= 1;
+                lower >>= 1;
+
+                let palette_idx = (active_palette * 4 + value) as usize;
+                let palette_entry = palette_table[palette_idx];
+                let colour = ppu::render::palette::SYSTEM_PALETTE_COLOURS[palette_entry as usize];
+
+                let base = (tile_y + y) * 3 * 128 + (tile_x + x) * 3;
+                data[base] = colour.0;
+                data[base + 1] = colour.1;
+                data[base + 2] = colour.2;
+            }
+        }
+    }
+
+    data
+}
+
+fn draw_palettes(ui: &imgui::Ui, palette_texture: glow::Texture, active_palette: u8) {
+    const PALETTE_WIDTH: f32 = 16.0;
+    const PALETTE_HEIGHT: f32 = PALETTE_WIDTH * 4.0;
+
+    let texture_id = imgui::TextureId::new(palette_texture.0.get() as usize);
+
+    let [cursor_start_x, cursor_start_y] = ui.cursor_screen_pos();
+    for p in 0..8 {
+        let x_offset = p as f32 * (PALETTE_WIDTH + 2.0);
+        ui.set_cursor_screen_pos([cursor_start_x + x_offset, cursor_start_y]);
+
+        imgui::Image::new(texture_id, [PALETTE_WIDTH, PALETTE_HEIGHT])
+            .uv0([p as f32 / 8.0, 0.0])
+            .uv1([(p + 1) as f32 / 8.0, 1.0])
+            .build(ui);
+
+        if p == active_palette {
+            let draw_list = ui.get_window_draw_list();
+            let pos = [cursor_start_x + x_offset, cursor_start_y];
+            draw_list
+                .add_rect(pos, [pos[0] + PALETTE_WIDTH, pos[1] + PALETTE_HEIGHT], [1.0, 1.0, 0.0, 1.0])
+                .thickness(2.0)
+                .build();
+        }
+    }
+
+    ui.set_cursor_screen_pos([cursor_start_x, cursor_start_y + PALETTE_HEIGHT + 4.0]);
+}
+
+fn draw_pattern_table(ui: &imgui::Ui, texture: glow::Texture, size: f32) {
+    let texture_id = imgui::TextureId::new(texture.0.get() as usize);
+    imgui::Image::new(texture_id, [size, size]).build(ui);
+}
+
+fn text_bitflags(ui: &imgui::Ui, name: &str, labels: &str, bits: u8) {
+    ui.text(format!("{}: {:02X}", name, bits));
+
+    for (i, ch) in labels.chars().enumerate() {
+        ui.same_line();
+
+        if (bits & (1 << (7 - i))) != 0 {
+            ui.text_colored([1.0, 0.0, 0.0, 1.0], ch.to_string());
+        } else {
+            ui.text(ch.to_string());
+        }
+    }
 }

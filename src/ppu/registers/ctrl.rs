@@ -19,6 +19,16 @@ impl PpuCtrlRegister {
     pub fn update(&mut self, value: u8) {
         *self = Self::from_bits_truncate(value);
     }
+    
+    pub fn nametable_addr(&self) -> u16 {
+        match self.bits() & 0x3 {
+            0 => 0x2000,
+            1 => 0x2400,
+            2 => 0x2800,
+            3 => 0x2C00,
+            _ => unreachable!("Invalid nametable address"),
+        }
+    }
 
     pub fn vram_add_increment(&self) -> u8 {
         if !self.contains(Self::VRAM_ADD_INCREMENT) { 1 } else { 32 }

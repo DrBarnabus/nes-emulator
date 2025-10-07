@@ -31,6 +31,11 @@ pub struct Ppu {
     nmi_occurred: bool,
     nmi_output: bool,
     nmi_previous: bool,
+
+    // Latched scroll values for rendering (captured at end of vblank)
+    pub render_scroll_x: u8,
+    pub render_scroll_y: u8,
+    pub render_nametable_addr: u16,
 }
 
 impl Ppu {
@@ -58,6 +63,10 @@ impl Ppu {
             nmi_occurred: false,
             nmi_output: false,
             nmi_previous: false,
+
+            render_scroll_x: 0,
+            render_scroll_y: 0,
+            render_nametable_addr: 0x2000,
         }
     }
 
@@ -67,15 +76,23 @@ impl Ppu {
         let mut new_frame = false;
 
         if self.cycle > 340 {
+            if self.is_sprite_0_hit(self.cycle as usize) {
+                self.status.insert(PpuStatusRegister::SPRITE_0_HIT);
+            }
+
             self.cycle = 0;
             self.scanline += 1;
 
             if self.scanline == 241 {
+                self.render_scroll_x = self.scroll.scroll_x;
+                self.render_scroll_y = self.scroll.scroll_y;
+                self.render_nametable_addr = self.ctrl.nametable_addr();
+
+                self.status.remove(PpuStatusRegister::SPRITE_0_HIT);
                 self.set_vblank();
             } else if self.scanline > 261 {
                 self.scanline = 0;
                 self.frame += 1;
-                self.clear_vblank();
 
                 new_frame = true;
             }
@@ -130,7 +147,8 @@ impl Ppu {
                 result
             }
             0x3000..=0x3EFF => unimplemented!("Address space 0x3000..0x3EFF is not expected to be used, attempted to read {:#x}", address),
-            0x3F00..=0x3FFF => self.palette_table[(address & 0x1F) as usize],
+            0x3F10 | 0x3F14 | 0x3F18 | 0x3F1C => self.palette_table[((address - 0x10) - 0x3F00) as usize],
+            0x3F00..=0x3FFF => self.palette_table[(address - 0x3F00) as usize],
             _ => panic!("Unexpected access to mirrored address space, attempted to read {:#x}", address),
         }
     }
@@ -167,8 +185,9 @@ impl Ppu {
             0..=0x1FFF => println!("Ignoring attempted write to chr rom, attempted to write {:02x}", address),
             0x2000..=0x2FFF => self.vram[self.mirror_vram_address(address) as usize] = value,
             0x3000..=0x3EFF => unimplemented!("Address space 0x3000..0x3EFF is not expected to be used, attempted to write {:#x}", address),
+            0x3F10 | 0x3F14 | 0x3F18 | 0x3F1C => self.palette_table[((address - 0x10) - 0x3F00) as usize] = value,
             0x3F00..=0x3FFF => {
-                self.palette_table[(address & 0x1F) as usize] = value;
+                self.palette_table[(address - 0x3F00) as usize] = value;
             }
             _ => panic!("Unexpected access to mirrored address space, attempted to write {:#x}", address),
         }
@@ -211,5 +230,11 @@ impl Ppu {
     fn update_nmi_output(&mut self) {
         let nmi_enabled = self.ctrl.contains(PpuCtrlRegister::GENERATE_NMI);
         self.nmi_output = self.nmi_occurred && nmi_enabled;
+    }
+
+    fn is_sprite_0_hit(&self, cycle: usize) -> bool {
+        let y = self.oam_data[0] as usize;
+        let x = self.oam_data[3] as usize;
+        (y == self.scanline as usize) && x <= cycle && self.mask.contains(PpuMaskRegister::SHOW_SPRITES)
     }
 }

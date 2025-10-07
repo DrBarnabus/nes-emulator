@@ -218,7 +218,7 @@ fn main() {
                             text_bitflags(ui, "CTRL", "VPHBSINN", ppu.ctrl.bits());
                             text_bitflags(ui, "MASK", "BGRsbMmG", ppu.mask.bits());
                             text_bitflags(ui, "STATUS", "VSO-----", ppu.status.bits());
-                            ui.text(format!("SCROLL: {:02X} {:02X}", ppu.scroll.scroll_x, ppu.scroll.scroll_y));
+                            ui.text(format!("SCROLL: {:02X} {:02X}", ppu.render_scroll_x, ppu.render_scroll_y));
                             ui.text(format!("ADDR: {:04X}", ppu.addr.get()));
 
                             ui.separator();
@@ -294,12 +294,26 @@ fn update_rgb_texture(gl: &glow::Context, texture: glow::Texture, width: i32, he
     }
 }
 
+fn get_palette_color(palette_table: &[u8; 32], index: usize) -> u8 {
+    let mirrored_index = match index {
+        0x10 => 0x00,
+        0x14 => 0x04,
+        0x18 => 0x08,
+        0x1C => 0x0C,
+        _ if index < 32 => index,
+        _ => 0,
+    };
+
+    palette_table[mirrored_index]
+}
+
 fn populate_palette_texture(palette_table: &[u8; 32]) -> Vec<u8> {
     let mut data = Vec::with_capacity(8 * 4 * 3);
 
     for color_idx in 0..4 {
         for palette_idx in 0..8 {
-            let palette_entry = palette_table[(palette_idx << 2) + color_idx];
+            let index = (palette_idx << 2) + color_idx;
+            let palette_entry = get_palette_color(palette_table, index);
             let color = ppu::render::palette::SYSTEM_PALETTE_COLOURS[palette_entry as usize];
             data.push(color.0);
             data.push(color.1);
@@ -331,7 +345,7 @@ fn populate_pattern_table_texture(pattern_table_idx: usize, chr_rom: &[u8], pale
                 lower >>= 1;
 
                 let palette_idx = (active_palette * 4 + value) as usize;
-                let palette_entry = palette_table[palette_idx];
+                let palette_entry = get_palette_color(palette_table, palette_idx);
                 let colour = ppu::render::palette::SYSTEM_PALETTE_COLOURS[palette_entry as usize];
 
                 let base = (tile_y + y) * 3 * 128 + (tile_x + x) * 3;

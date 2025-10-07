@@ -4,10 +4,11 @@ pub mod palette;
 use crate::ppu::Ppu;
 use crate::ppu::render::frame::Frame;
 use crate::ppu::render::palette::SYSTEM_PALETTE_COLOURS;
+use crate::rom::Mirroring;
 
-fn background_palette(ppu: &Ppu, tile_column: usize, tile_row: usize) -> [u8; 4] {
+fn background_palette(ppu: &Ppu, attribute_table: &[u8], tile_column: usize, tile_row: usize) -> [u8; 4] {
     let attr_table_idx = tile_row / 4 * 8 + tile_column / 4;
-    let attr_byte = ppu.vram[0x3C0 + attr_table_idx];
+    let attr_byte = attribute_table[attr_table_idx];
 
     let palette_idx = match (tile_column % 4 / 2, tile_row % 4 / 2) {
         (0, 0) => (attr_byte & 0x03) as usize,
@@ -31,17 +32,30 @@ fn sprite_palette(ppu: &Ppu, palette_idx: u8) -> [u8; 4] {
     [0, ppu.palette_table[start], ppu.palette_table[start + 1], ppu.palette_table[start + 2]]
 }
 
-pub fn render(ppu: &Ppu, frame: &mut Frame) {
-    let background_bank = ppu.ctrl.background_pattern_addr();
-    let sprite_bank = ppu.ctrl.sprite_pattern_addr();
+struct Viewport {
+    x1: usize,
+    y1: usize,
+    x2: usize,
+    y2: usize,
+}
 
-    // Background
+impl Viewport {
+    fn new(x1: usize, y1: usize, x2: usize, y2: usize) -> Self {
+        Self { x1, y1, x2, y2 }
+    }
+}
+
+fn render_background_nametable(ppu: &Ppu, frame: &mut Frame, nametable: &[u8], viewport: Viewport, shift_x: isize, shift_y: isize) {
+    let background_bank = ppu.ctrl.background_pattern_addr();
+    let attribute_table = &nametable[0x3C0..0x400];
+
     for i in 0..0x3C0 {
-        let tile = ppu.vram[i] as u16;
+        let tile_idx = nametable[i] as u16;
+        let tile = &ppu.chr_rom[(background_bank + tile_idx * 16) as usize..=(background_bank + tile_idx * 16 + 15) as usize];
+
         let tile_column = i % 32;
         let tile_row = i / 32;
-        let tile = &ppu.chr_rom[(background_bank + tile * 16) as usize..=(background_bank + tile * 16 + 15) as usize];
-        let palette = background_palette(ppu, tile_column, tile_row);
+        let palette = background_palette(ppu, attribute_table, tile_column, tile_row);
 
         for y in 0..=7 {
             let mut lower = tile[y];
@@ -60,12 +74,41 @@ pub fn render(ppu: &Ppu, frame: &mut Frame) {
                     _ => unreachable!("Invalid value: {}", value),
                 };
 
-                frame.set_pixel(tile_column * 8 + x, tile_row * 8 + y, colour);
+                let pixel_x = tile_column * 8 + x;
+                let pixel_y = tile_row * 8 + y;
+                if pixel_x >= viewport.x1 && pixel_x < viewport.x2 && pixel_y >= viewport.y1 && pixel_y < viewport.y2 {
+                    frame.set_pixel((shift_x + pixel_x as isize) as usize, (shift_y + pixel_y as isize) as usize, colour);
+                }
             }
         }
     }
+}
 
-    // Sprites
+pub fn render_background(ppu: &Ppu, frame: &mut Frame) {
+    let scroll_x = ppu.render_scroll_x as usize;
+    let scroll_y = ppu.render_scroll_y as usize;
+
+    let (main_nametable, secondary_nametable) = match (&ppu.mirroring, ppu.render_nametable_addr) {
+        (Mirroring::Vertical, 0x2000 | 0x2800) | (Mirroring::Horizontal, 0x2000 | 0x2400) => {
+            (&ppu.vram[0..0x400], &ppu.vram[0x400..0x800])
+        }
+        (Mirroring::Vertical, 0x2400 | 0x2C00) | (Mirroring::Horizontal, 0x2800 | 0x2C00) => {
+            ( &ppu.vram[0x400..0x800], &ppu.vram[0..0x400])
+        }
+        _ => unimplemented!("Unsupported mirroring type {:?} or nametable_addr {:04x}", ppu.mirroring, ppu.render_nametable_addr),
+    };
+
+    render_background_nametable(ppu, frame, main_nametable, Viewport::new(scroll_x, scroll_y, Frame::NES_WIDTH, Frame::NES_HEIGHT), -(scroll_x as isize), -(scroll_y as isize));
+
+    if scroll_x > 0 {
+        render_background_nametable(ppu, frame, secondary_nametable, Viewport::new(0, 0, scroll_x, Frame::NES_HEIGHT), (Frame::NES_WIDTH - scroll_x) as isize, 0);
+    } else if scroll_y > 0 {
+        render_background_nametable(ppu, frame, secondary_nametable, Viewport::new(0, 0, Frame::NES_WIDTH, scroll_y), 0, (Frame::NES_HEIGHT - scroll_y) as isize);
+    }
+}
+
+pub fn render_sprites(ppu: &Ppu, frame: &mut Frame) {
+    let sprite_bank = ppu.ctrl.sprite_pattern_addr();
     for i in (0..ppu.oam_data.len()).step_by(4).rev() {
         let tile_idx = ppu.oam_data[i + 1] as u16;
         let tile_x = ppu.oam_data[i + 3] as usize;
@@ -104,4 +147,9 @@ pub fn render(ppu: &Ppu, frame: &mut Frame) {
             }
         }
     }
+}
+
+pub fn render(ppu: &Ppu, frame: &mut Frame) {
+    render_background(ppu, frame);
+    render_sprites(ppu, frame);
 }

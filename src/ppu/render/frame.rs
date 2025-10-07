@@ -6,8 +6,8 @@ pub struct Frame {
 }
 
 impl Frame {
-    const NES_WIDTH: usize = 256;
-    const NES_HEIGHT: usize = 240;
+    pub const NES_WIDTH: usize = 256;
+    pub const NES_HEIGHT: usize = 240;
 
     pub fn new() -> Self {
         Self {

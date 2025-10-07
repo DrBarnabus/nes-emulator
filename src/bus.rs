@@ -88,7 +88,7 @@ impl Mem for Bus {
         match address {
             RAM..=RAM_END => self.ram[(address & RAM_MASK) as usize],
             PPU_CTRL | PPU_MASK | PPU_OAM_ADDR | PPU_SCROLL | PPU_ADDR | PPU_OAM_DMA => {
-                println!("Cannot read from write-only PPU address, attempted to read {:02x}", address);
+                // println!("Cannot read from write-only PPU address, attempted to read {:02x}", address);
                 0
             }
             PPU_STATUS => self.ppu.read_status(),
@@ -97,12 +97,12 @@ impl Mem for Bus {
             PPU_MIRROR..=PPU_MIRROR_END => self.read(address & 0x2007),
             JOYPAD_1 => self.joypad_1.read(),
             JOYPAD_2 => {
-                println!("Ignoring attempted memory access for joypad 2, attempted to read {:02x}", address);
+                // println!("Ignoring attempted memory access for joypad 2, attempted to read {:02x}", address);
                 0
             }
             PRG_ROM..=PRG_ROM_END => self.read_prg_rom(address),
             _ => {
-                println!("Ignoring attempted memory access, attempted to read {:02x}", address);
+                // println!("Ignoring attempted memory access, attempted to read {:02x}", address);
                 0
             }
         }
@@ -131,11 +131,11 @@ impl Mem for Bus {
             }
             JOYPAD_1 => self.joypad_1.write(value),
             JOYPAD_2 => {
-                println!("Ignoring attempted memory access for joypad 2, attempted to write {:02x}", address);
+                // println!("Ignoring attempted memory access for joypad 2, attempted to write {:02x}", address);
             }
             PRG_ROM..=PRG_ROM_END => panic!("Cannot write to PRG ROM, attempted to write {:02x}", address),
             _ => {
-                println!("Ignoring attempted memory access, attempted to write {:02x}", address);
+                // println!("Ignoring attempted memory access, attempted to write {:02x}", address);
             }
         }
     }

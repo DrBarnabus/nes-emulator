@@ -1,3 +1,5 @@
+#![windows_subsystem = "windows"]
+
 pub mod bus;
 pub mod cpu;
 pub mod emulator;
@@ -8,16 +10,30 @@ pub mod rom;
 use clap::Parser;
 use emulator::Emulator;
 use glow::HasContext;
-use imgui::{Condition, Context};
+use glutin::config::ConfigTemplateBuilder;
+use glutin::context::{ContextAttributesBuilder, NotCurrentGlContext, PossiblyCurrentContext};
+use glutin::display::GetGlDisplay;
+use glutin::prelude::*;
+use glutin::surface::{Surface, SurfaceAttributesBuilder, WindowSurface};
+use glutin_winit::DisplayBuilder;
+use imgui::{Condition, Context, FontSource};
 use imgui_glow_renderer::AutoRenderer;
-use imgui_sdl2_support::SdlPlatform;
+use imgui_winit_support::{HiDpiMode, WinitPlatform};
 use joypad::JoypadButton;
 use ppu::render::frame::Frame;
+use raw_window_handle::HasWindowHandle;
 use rom::Rom;
-use sdl2::event::Event;
-use sdl2::keyboard::Keycode;
 use std::collections::HashMap;
+use std::num::NonZeroU32;
+use std::time::Duration;
+use winit::dpi::PhysicalSize;
+use winit::event::{ElementState, Event, WindowEvent};
+use winit::event_loop::EventLoop;
+use winit::keyboard::{KeyCode, PhysicalKey};
+use winit::platform::pump_events::EventLoopExtPumpEvents;
+use winit::window::Window;
 
+const TITLE: &str = "NES Emulator";
 const NES_WIDTH: u32 = 256;
 const NES_HEIGHT: u32 = 240;
 const NES_ASPECT_RATIO: f32 = NES_WIDTH as f32 / NES_HEIGHT as f32;
@@ -34,40 +50,68 @@ struct Args {
     debug: bool,
 }
 
+fn create_window(debug: bool) -> (EventLoop<()>, Window, Surface<WindowSurface>, PossiblyCurrentContext) {
+    let event_loop = EventLoop::new().unwrap();
+
+    let (window_width, window_height) = (
+        if debug {
+            DEFAULT_WINDOW_WIDTH + (DEFAULT_WINDOW_WIDTH / 2) // Allow enough room for the original width + 33% for a debug window
+        } else {
+            DEFAULT_WINDOW_WIDTH
+        },
+        DEFAULT_WINDOW_HEIGHT,
+    );
+
+    let window_attributes = Window::default_attributes()
+        .with_title(TITLE)
+        .with_inner_size(PhysicalSize::new(window_width, window_height))
+        .with_resizable(true);
+
+    let (window, config) = DisplayBuilder::new()
+        .with_window_attributes(Some(window_attributes))
+        .build(&event_loop, ConfigTemplateBuilder::new(), |mut configs| configs.next().unwrap())
+        .unwrap();
+
+    let window = window.unwrap();
+
+    let context_attributes = ContextAttributesBuilder::new().build(Some(window.window_handle().unwrap().as_raw()));
+    let context = unsafe { config.display().create_context(&config, &context_attributes).unwrap() };
+
+    let surface_attributes = SurfaceAttributesBuilder::<WindowSurface>::new().with_srgb(Some(true)).build(
+        window.window_handle().unwrap().as_raw(),
+        NonZeroU32::new(window_width).unwrap(),
+        NonZeroU32::new(window_height).unwrap(),
+    );
+
+    let surface = unsafe { config.display().create_window_surface(&config, &surface_attributes).unwrap() };
+
+    let context = context.make_current(&surface).unwrap();
+
+    (event_loop, window, surface, context)
+}
+
+fn imgui_init(window: &Window) -> (WinitPlatform, Context) {
+    let mut context = Context::create();
+    context.set_ini_filename(None);
+    context.style_mut().use_dark_colors();
+
+    let mut platform = WinitPlatform::new(&mut context);
+    platform.attach_window(context.io_mut(), window, HiDpiMode::Rounded);
+
+    context.fonts().add_font(&[FontSource::DefaultFontData { config: None }]);
+    context.io_mut().font_global_scale = (1.0 / platform.hidpi_factor()) as f32;
+
+    (platform, context)
+}
+
 fn main() {
     let args = Args::parse();
 
-    let sdl_context = sdl2::init().unwrap();
-    let video_subsystem = sdl_context.video().unwrap();
+    let (mut event_loop, window, surface, gl_context) = create_window(args.debug);
+    let (mut imgui_platform, mut imgui_context) = imgui_init(&window);
 
-    let window = video_subsystem
-        .window(
-            "NES Emulator",
-            if args.debug {
-                DEFAULT_WINDOW_WIDTH + (DEFAULT_WINDOW_WIDTH / 2) // Allow enough room for the original width + 33% for a debug window
-            } else {
-                DEFAULT_WINDOW_WIDTH
-            },
-            DEFAULT_WINDOW_HEIGHT,
-        )
-        .allow_highdpi()
-        .opengl()
-        .position_centered()
-        .resizable()
-        .build()
-        .unwrap();
-
-    let gl_context = window.gl_create_context().unwrap();
-    window.gl_make_current(&gl_context).unwrap();
-
-    let gl = unsafe { glow::Context::from_loader_function(|s| video_subsystem.gl_get_proc_address(s) as *const _) };
-
-    let mut imgui = Context::create();
-    imgui.set_ini_filename(None);
-    imgui.style_mut().use_dark_colors();
-
-    let mut imgui_platform = SdlPlatform::new(&mut imgui);
-    let mut imgui_renderer = AutoRenderer::new(gl, &mut imgui).unwrap();
+    let gl = unsafe { glow::Context::from_loader_function_cstr(|s| gl_context.display().get_proc_address(s).cast()) };
+    let mut imgui_renderer = AutoRenderer::new(gl, &mut imgui_context).unwrap();
 
     let gl = imgui_renderer.gl_context();
     let nes_texture = create_rgb_texture(gl, NES_WIDTH as i32, NES_HEIGHT as i32);
@@ -79,8 +123,6 @@ fn main() {
 
     let mut frame = Frame::new();
 
-    let mut event_pump = sdl_context.event_pump().unwrap();
-
     let rom = Rom::load(args.rom.as_str()).unwrap();
     let mut emulator = Emulator::new(rom);
     emulator.run(
@@ -88,35 +130,49 @@ fn main() {
             // Per-instruction callback, which can be used for debugging/tracing
         },
         |cpu| {
-            for event in event_pump.poll_iter() {
-                imgui_platform.handle_event(&mut imgui, &event);
+            let mut should_exit = false;
 
-                match event {
-                    Event::Quit { .. }
-                    | Event::KeyDown {
-                        keycode: Some(Keycode::Escape),
-                        ..
-                    } => std::process::exit(0),
-                    Event::KeyDown { keycode: Some(keycode), .. } => match keycode {
-                        Keycode::F12 => debug_visible = !debug_visible,
-                        Keycode::P => active_palette = (active_palette + 1) & 0x07,
-                        _ => {
-                            if let Some(button) = KEY_MAP.get(&keycode) {
-                                cpu.bus.borrow_mut().joypad_1.set_button_state(*button, true)
+            #[allow(deprecated)]
+            event_loop.pump_events(Some(Duration::ZERO), |event, _window_target| {
+                imgui_platform.handle_event(imgui_context.io_mut(), &window, &event);
+
+                if let Event::WindowEvent { event: window_event, .. } = event {
+                    match window_event {
+                        WindowEvent::CloseRequested => should_exit = true,
+                        WindowEvent::KeyboardInput { event: key_event, .. } => {
+                            if let PhysicalKey::Code(keycode) = key_event.physical_key {
+                                let is_pressed = key_event.state == ElementState::Pressed;
+
+                                if is_pressed {
+                                    match keycode {
+                                        KeyCode::Escape => should_exit = true,
+                                        KeyCode::F12 => debug_visible = !debug_visible,
+                                        KeyCode::KeyP => active_palette = (active_palette + 1) & 0x07,
+                                        _ => {}
+                                    }
+                                }
+
+                                if let Some(button) = KEY_MAP.get(&keycode) {
+                                    cpu.bus.borrow_mut().joypad_1.set_button_state(*button, is_pressed)
+                                }
                             }
                         }
-                    },
-                    Event::KeyUp { keycode: Some(keycode), .. } => {
-                        if let Some(button) = KEY_MAP.get(&keycode) {
-                            cpu.bus.borrow_mut().joypad_1.set_button_state(*button, false)
-                        }
+                        WindowEvent::Resized(physical_size) => surface.resize(
+                            &gl_context,
+                            NonZeroU32::new(physical_size.width).unwrap(),
+                            NonZeroU32::new(physical_size.height).unwrap(),
+                        ),
+                        _ => {}
                     }
-                    _ => {}
                 }
+            });
+
+            if should_exit {
+                std::process::exit(0);
             }
 
-            imgui_platform.prepare_frame(&mut imgui, &window, &event_pump);
-            let ui = imgui.frame();
+            imgui_platform.prepare_frame(imgui_context.io_mut(), &window).unwrap();
+            let ui = imgui_context.frame();
 
             let [display_width, display_height] = ui.io().display_size;
             let emulator_width = if debug_visible { display_width * 0.67 } else { display_width };
@@ -253,10 +309,10 @@ fn main() {
                 }
             }
 
-            let draw_data = imgui.render();
+            let draw_data = imgui_context.render();
             imgui_renderer.render(draw_data).unwrap();
 
-            window.gl_swap_window();
+            surface.swap_buffers(&gl_context).unwrap();
         },
     );
 }
@@ -422,16 +478,16 @@ fn text_bitflags_long(ui: &imgui::Ui, name: &str, labels: [&str; 8], bits: u8) {
 }
 
 lazy_static::lazy_static! {
-    pub static ref KEY_MAP: HashMap<Keycode, JoypadButton> = {
+    pub static ref KEY_MAP: HashMap<KeyCode, JoypadButton> = {
         let mut map = HashMap::new();
-        map.insert(Keycode::S, JoypadButton::A);
-        map.insert(Keycode::A, JoypadButton::B);
-        map.insert(Keycode::Q, JoypadButton::SELECT);
-        map.insert(Keycode::W, JoypadButton::START);
-        map.insert(Keycode::Up, JoypadButton::UP);
-        map.insert(Keycode::Down, JoypadButton::DOWN);
-        map.insert(Keycode::Left, JoypadButton::LEFT);
-        map.insert(Keycode::Right, JoypadButton::RIGHT);
+        map.insert(KeyCode::KeyS, JoypadButton::A);
+        map.insert(KeyCode::KeyA, JoypadButton::B);
+        map.insert(KeyCode::KeyQ, JoypadButton::SELECT);
+        map.insert(KeyCode::KeyW, JoypadButton::START);
+        map.insert(KeyCode::ArrowUp, JoypadButton::UP);
+        map.insert(KeyCode::ArrowDown, JoypadButton::DOWN);
+        map.insert(KeyCode::ArrowLeft, JoypadButton::LEFT);
+        map.insert(KeyCode::ArrowRight, JoypadButton::RIGHT);
 
         map
     };

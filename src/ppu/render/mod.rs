@@ -49,9 +49,8 @@ fn render_background_nametable(ppu: &Ppu, frame: &mut Frame, nametable: &[u8], v
     let background_bank = ppu.ctrl.background_pattern_addr();
     let attribute_table = &nametable[0x3C0..0x400];
 
-    for i in 0..0x3C0 {
-        let tile_idx = nametable[i] as u16;
-        let tile = &ppu.chr_rom[(background_bank + tile_idx * 16) as usize..=(background_bank + tile_idx * 16 + 15) as usize];
+    for (i, tile_idx) in nametable.iter().enumerate().take(0x3C0) {
+        let tile = &ppu.chr_rom[(background_bank + *tile_idx as u16 * 16) as usize..=(background_bank + *tile_idx as u16 * 16 + 15) as usize];
 
         let tile_column = i % 32;
         let tile_row = i / 32;
@@ -89,21 +88,42 @@ pub fn render_background(ppu: &Ppu, frame: &mut Frame) {
     let scroll_y = ppu.render_scroll_y as usize;
 
     let (main_nametable, secondary_nametable) = match (&ppu.mirroring, ppu.render_nametable_addr) {
-        (Mirroring::Vertical, 0x2000 | 0x2800) | (Mirroring::Horizontal, 0x2000 | 0x2400) => {
-            (&ppu.vram[0..0x400], &ppu.vram[0x400..0x800])
-        }
-        (Mirroring::Vertical, 0x2400 | 0x2C00) | (Mirroring::Horizontal, 0x2800 | 0x2C00) => {
-            ( &ppu.vram[0x400..0x800], &ppu.vram[0..0x400])
-        }
-        _ => unimplemented!("Unsupported mirroring type {:?} or nametable_addr {:04x}", ppu.mirroring, ppu.render_nametable_addr),
+        (Mirroring::Vertical, 0x2000 | 0x2800) | (Mirroring::Horizontal, 0x2000 | 0x2400) => (&ppu.vram[0..0x400], &ppu.vram[0x400..0x800]),
+        (Mirroring::Vertical, 0x2400 | 0x2C00) | (Mirroring::Horizontal, 0x2800 | 0x2C00) => (&ppu.vram[0x400..0x800], &ppu.vram[0..0x400]),
+        _ => unimplemented!(
+            "Unsupported mirroring type {:?} or nametable_addr {:04x}",
+            ppu.mirroring,
+            ppu.render_nametable_addr
+        ),
     };
 
-    render_background_nametable(ppu, frame, main_nametable, Viewport::new(scroll_x, scroll_y, Frame::NES_WIDTH, Frame::NES_HEIGHT), -(scroll_x as isize), -(scroll_y as isize));
+    render_background_nametable(
+        ppu,
+        frame,
+        main_nametable,
+        Viewport::new(scroll_x, scroll_y, Frame::NES_WIDTH, Frame::NES_HEIGHT),
+        -(scroll_x as isize),
+        -(scroll_y as isize),
+    );
 
     if scroll_x > 0 {
-        render_background_nametable(ppu, frame, secondary_nametable, Viewport::new(0, 0, scroll_x, Frame::NES_HEIGHT), (Frame::NES_WIDTH - scroll_x) as isize, 0);
+        render_background_nametable(
+            ppu,
+            frame,
+            secondary_nametable,
+            Viewport::new(0, 0, scroll_x, Frame::NES_HEIGHT),
+            (Frame::NES_WIDTH - scroll_x) as isize,
+            0,
+        );
     } else if scroll_y > 0 {
-        render_background_nametable(ppu, frame, secondary_nametable, Viewport::new(0, 0, Frame::NES_WIDTH, scroll_y), 0, (Frame::NES_HEIGHT - scroll_y) as isize);
+        render_background_nametable(
+            ppu,
+            frame,
+            secondary_nametable,
+            Viewport::new(0, 0, Frame::NES_WIDTH, scroll_y),
+            0,
+            (Frame::NES_HEIGHT - scroll_y) as isize,
+        );
     }
 }
 

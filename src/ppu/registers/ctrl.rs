@@ -19,7 +19,7 @@ impl PpuCtrlRegister {
     pub fn update(&mut self, value: u8) {
         *self = Self::from_bits_truncate(value);
     }
-    
+
     pub fn nametable_addr(&self) -> u16 {
         match self.bits() & 0x3 {
             0 => 0x2000,

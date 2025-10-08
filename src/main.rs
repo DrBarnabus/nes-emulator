@@ -32,6 +32,7 @@ use winit::event_loop::EventLoop;
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::platform::pump_events::EventLoopExtPumpEvents;
 use winit::window::Window;
+use anyhow::{Context as _, Result};
 
 const TITLE: &str = "NES Emulator";
 const NES_WIDTH: u32 = 256;
@@ -50,8 +51,8 @@ struct Args {
     debug: bool,
 }
 
-fn create_window(debug: bool) -> (EventLoop<()>, Window, Surface<WindowSurface>, PossiblyCurrentContext) {
-    let event_loop = EventLoop::new().unwrap();
+fn create_window(debug: bool) -> Result<(EventLoop<()>, Window, Surface<WindowSurface>, PossiblyCurrentContext)> {
+    let event_loop = EventLoop::new().context("Failed to create event loop")?;
 
     let (window_width, window_height) = (
         if debug {
@@ -74,20 +75,20 @@ fn create_window(debug: bool) -> (EventLoop<()>, Window, Surface<WindowSurface>,
 
     let window = window.unwrap();
 
-    let context_attributes = ContextAttributesBuilder::new().build(Some(window.window_handle().unwrap().as_raw()));
-    let context = unsafe { config.display().create_context(&config, &context_attributes).unwrap() };
+    let context_attributes = ContextAttributesBuilder::new().build(Some(window.window_handle()?.as_raw()));
+    let context = unsafe { config.display().create_context(&config, &context_attributes).context("Failed to create context")? };
 
     let surface_attributes = SurfaceAttributesBuilder::<WindowSurface>::new().with_srgb(Some(true)).build(
-        window.window_handle().unwrap().as_raw(),
+        window.window_handle()?.as_raw(),
         NonZeroU32::new(window_width).unwrap(),
         NonZeroU32::new(window_height).unwrap(),
     );
 
-    let surface = unsafe { config.display().create_window_surface(&config, &surface_attributes).unwrap() };
+    let surface = unsafe { config.display().create_window_surface(&config, &surface_attributes).context("Failed to create surface")? };
 
-    let context = context.make_current(&surface).unwrap();
+    let context = context.make_current(&surface).context("Failed to make context current")?;
 
-    (event_loop, window, surface, context)
+    Ok((event_loop, window, surface, context))
 }
 
 fn imgui_init(window: &Window) -> (WinitPlatform, Context) {
@@ -104,14 +105,14 @@ fn imgui_init(window: &Window) -> (WinitPlatform, Context) {
     (platform, context)
 }
 
-fn main() {
-    let args = Args::parse();
+fn main() -> Result<()> {
+    let args = Args::try_parse().context("Failed to parse command line arguments")?;
 
-    let (mut event_loop, window, surface, gl_context) = create_window(args.debug);
+    let (mut event_loop, window, surface, gl_context) = create_window(args.debug).context("Failed to create window")?;
     let (mut imgui_platform, mut imgui_context) = imgui_init(&window);
 
     let gl = unsafe { glow::Context::from_loader_function_cstr(|s| gl_context.display().get_proc_address(s).cast()) };
-    let mut imgui_renderer = AutoRenderer::new(gl, &mut imgui_context).unwrap();
+    let mut imgui_renderer = AutoRenderer::new(gl, &mut imgui_context).context("Failed to create ImGui renderer")?;
 
     let gl = imgui_renderer.gl_context();
     let nes_texture = create_rgb_texture(gl, NES_WIDTH as i32, NES_HEIGHT as i32);
@@ -123,8 +124,9 @@ fn main() {
 
     let mut frame = Frame::new();
 
-    let rom = Cartridge::load(args.rom.as_str()).unwrap();
-    let mut emulator = Emulator::new(rom);
+    let cartridge = Cartridge::load(args.rom.as_str()).context("Failed to load ROM file into Cartridge")?;
+
+    let mut emulator = Emulator::new(cartridge);
     emulator.run(
         |_cpu| {
             // Per-instruction callback, which can be used for debugging/tracing
@@ -317,6 +319,8 @@ fn main() {
             surface.swap_buffers(&gl_context).unwrap();
         },
     );
+
+    Ok(())
 }
 
 fn create_rgb_texture(gl: &glow::Context, width: i32, height: i32) -> glow::Texture {

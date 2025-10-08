@@ -1,6 +1,7 @@
 use super::bus::Bus;
+use super::cartridge::Cartridge;
 use super::cpu::Cpu;
-use super::rom::Rom;
+use crate::ppu::Ppu;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
@@ -50,17 +51,20 @@ impl Default for TimingController {
 }
 
 pub struct Emulator {
-    #[allow(dead_code)]
-    bus: Rc<RefCell<Bus>>,
-    cpu: Cpu,
+    pub cpu: Cpu,
+    pub ppu: Rc<RefCell<Ppu>>,
+    pub cartridge: Rc<RefCell<Cartridge>>,
+    pub bus: Rc<RefCell<Bus>>,
 }
 
 impl Emulator {
-    pub fn new(rom: Rom) -> Self {
-        let bus = Rc::new(RefCell::new(Bus::new(rom)));
+    pub fn new(cartridge: Cartridge) -> Self {
+        let cartridge = Rc::new(RefCell::new(cartridge));
+        let ppu = Rc::new(RefCell::new(Ppu::new(Rc::clone(&cartridge))));
+        let bus = Rc::new(RefCell::new(Bus::new(Rc::clone(&ppu), Rc::clone(&cartridge))));
         let cpu = Cpu::new(Rc::clone(&bus));
 
-        Self { bus, cpu }
+        Self { cpu, ppu, cartridge, bus }
     }
 
     pub fn run<F, G>(&mut self, mut callback: F, mut frame_callback: G)
@@ -72,7 +76,7 @@ impl Emulator {
 
         // Tick PPU for the CPU reset cycles (7 CPU cycles = 21 PPU cycles)
         for _ in 0..21 {
-            self.bus.borrow_mut().ppu.tick();
+            self.ppu.borrow_mut().tick();
         }
 
         const SYNC_THRESHOLD: u64 = 1000;
@@ -91,13 +95,12 @@ impl Emulator {
 
             let mut frame_complete = false;
             for _ in 0..cpu_cycles * 3 {
-                let mut bus = self.bus.borrow_mut();
-                if bus.ppu.tick() {
+                if self.ppu.borrow_mut().tick() {
                     frame_complete = true;
                 }
 
-                if bus.ppu.poll_nmi() {
-                    bus.trigger_nmi();
+                if self.ppu.borrow_mut().poll_nmi() {
+                    self.bus.borrow_mut().trigger_nmi();
                 }
             }
 

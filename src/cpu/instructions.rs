@@ -1,4 +1,4 @@
-use super::{Cpu, StatusFlags, addressing::AddressingMode, mem::Mem, opcode::Opcode};
+use super::{Cpu, StatusFlags, addressing::AddressingMode, opcode::Opcode};
 
 #[derive(Debug, Clone, Copy)]
 #[allow(clippy::upper_case_acronyms)]

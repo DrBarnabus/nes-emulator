@@ -1,6 +1,6 @@
 bitflags::bitflags! {
     #[derive(Copy, Clone)]
-    pub struct JoypadButton: u8 {
+    pub struct ControllerButton: u8 {
         const A = 0b0000_0001;
         const B = 0b0000_0010;
         const SELECT = 0b0000_0100;
@@ -12,18 +12,18 @@ bitflags::bitflags! {
     }
 }
 
-pub struct Joypad {
+pub struct Controller {
     strobe: bool,
     button_index: u8,
-    pub button_states: JoypadButton,
+    pub button_states: ControllerButton,
 }
 
-impl Joypad {
+impl Controller {
     pub fn new() -> Self {
         Self {
             strobe: false,
             button_index: 0,
-            button_states: JoypadButton::empty(),
+            button_states: ControllerButton::empty(),
         }
     }
 
@@ -47,12 +47,12 @@ impl Joypad {
         response
     }
 
-    pub fn set_button_state(&mut self, button: JoypadButton, pressed: bool) {
+    pub fn set_button_state(&mut self, button: ControllerButton, pressed: bool) {
         self.button_states.set(button, pressed);
     }
 }
 
-impl Default for Joypad {
+impl Default for Controller {
     fn default() -> Self {
         Self::new()
     }

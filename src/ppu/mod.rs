@@ -1,16 +1,17 @@
 pub mod registers;
 pub mod render;
 
-use super::rom::Mirroring;
+use crate::cartridge::{Cartridge, Mirroring};
 use crate::ppu::registers::addr::PpuAddrRegister;
 use crate::ppu::registers::ctrl::PpuCtrlRegister;
 use crate::ppu::registers::mask::PpuMaskRegister;
 use crate::ppu::registers::scroll::PpuScrollRegister;
 use crate::ppu::registers::status::PpuStatusRegister;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 pub struct Ppu {
-    pub chr_rom: Vec<u8>,
-    mirroring: Mirroring,
+    pub cartridge: Rc<RefCell<Cartridge>>,
 
     pub ctrl: PpuCtrlRegister,
     pub mask: PpuMaskRegister,
@@ -39,10 +40,9 @@ pub struct Ppu {
 }
 
 impl Ppu {
-    pub fn new(chr_rom: Vec<u8>, mirroring: Mirroring) -> Self {
+    pub fn new(cartridge: Rc<RefCell<Cartridge>>) -> Self {
         Self {
-            chr_rom,
-            mirroring,
+            cartridge,
 
             ctrl: PpuCtrlRegister::new(),
             mask: PpuMaskRegister::new(),
@@ -109,13 +109,36 @@ impl Ppu {
         new_frame
     }
 
+    pub fn cpu_read(&mut self, address: u16) -> u8 {
+        match address {
+            0x2002 => self.read_status(),
+            0x2004 => self.read_oam_data(),
+            0x2007 => self.read_data(),
+            _ => 0, // Open bus
+        }
+    }
+
+    pub fn cpu_write(&mut self, address: u16, value: u8) {
+        match address {
+            0x2000 => self.write_to_ppu_ctrl(value),
+            0x2001 => self.write_to_ppu_mask(value),
+            0x2002 => {} // Read-only
+            0x2003 => self.write_to_oam_addr(value),
+            0x2004 => self.write_to_oam_data(value),
+            0x2005 => self.write_to_ppu_scroll(value),
+            0x2006 => self.write_to_ppu_addr(value),
+            0x2007 => self.write_data(value),
+            _ => unreachable!(),
+        }
+    }
+
     pub fn poll_nmi(&mut self) -> bool {
         let pending = !self.nmi_previous && self.nmi_output;
         self.nmi_previous = self.nmi_output;
         pending
     }
 
-    pub fn read_status(&mut self) -> u8 {
+    fn read_status(&mut self) -> u8 {
         let result = self.status.bits();
 
         self.status.remove(PpuStatusRegister::VBLANK_STARTED);
@@ -125,18 +148,18 @@ impl Ppu {
         result
     }
 
-    pub fn read_oam_data(&mut self) -> u8 {
+    fn read_oam_data(&mut self) -> u8 {
         self.oam_data[self.oam_addr as usize]
     }
 
-    pub fn read_data(&mut self) -> u8 {
+    fn read_data(&mut self) -> u8 {
         let address = self.addr.get();
         self.increment_vram_addr();
 
         match address {
             0..=0x1FFF => {
                 let result = self.internal_data_buffer;
-                self.internal_data_buffer = self.chr_rom[address as usize];
+                self.internal_data_buffer = self.cartridge.borrow_mut().ppu_read(address);
 
                 result
             }
@@ -153,32 +176,32 @@ impl Ppu {
         }
     }
 
-    pub fn write_to_ppu_ctrl(&mut self, value: u8) {
+    fn write_to_ppu_ctrl(&mut self, value: u8) {
         self.ctrl.update(value);
     }
 
-    pub fn write_to_ppu_mask(&mut self, value: u8) {
+    fn write_to_ppu_mask(&mut self, value: u8) {
         self.mask.update(value);
     }
 
-    pub fn write_to_oam_addr(&mut self, value: u8) {
+    fn write_to_oam_addr(&mut self, value: u8) {
         self.oam_addr = value;
     }
 
-    pub fn write_to_oam_data(&mut self, value: u8) {
+    fn write_to_oam_data(&mut self, value: u8) {
         self.oam_data[self.oam_addr as usize] = value;
         self.oam_addr = self.oam_addr.wrapping_add(1);
     }
 
-    pub fn write_to_ppu_scroll(&mut self, value: u8) {
+    fn write_to_ppu_scroll(&mut self, value: u8) {
         self.scroll.update(value);
     }
 
-    pub fn write_to_ppu_addr(&mut self, value: u8) {
+    fn write_to_ppu_addr(&mut self, value: u8) {
         self.addr.update(value);
     }
 
-    pub fn write_data(&mut self, value: u8) {
+    fn write_data(&mut self, value: u8) {
         let address = self.addr.get();
 
         match address {
@@ -206,7 +229,7 @@ impl Ppu {
         let vram_index = mirrored_vram - 0x2000;
         let name_table = vram_index / 0x400;
 
-        match (&self.mirroring, name_table) {
+        match (self.cartridge.borrow_mut().mirroring, name_table) {
             (Mirroring::Vertical, 2) | (Mirroring::Vertical, 3) | (Mirroring::Horizontal, 3) => vram_index - 0x800,
             (Mirroring::Horizontal, 1) | (Mirroring::Horizontal, 2) => vram_index - 0x400,
             _ => vram_index,

@@ -1,18 +1,20 @@
 pub mod bus;
+pub mod cartridge;
+pub mod controller;
 pub mod cpu;
-pub mod joypad;
 pub mod ppu;
-pub mod rom;
 
+use crate::ppu::Ppu;
 use bus::Bus;
-use cpu::{Cpu, mem::Mem, trace::trace};
-use rom::Rom;
+use cartridge::Cartridge;
+use cpu::{Cpu, trace::trace};
 use std::cell::RefCell;
 use std::rc::Rc;
 
 fn main() {
-    let rom = Rom::load("test_roms/nestest.nes").unwrap();
-    let bus = Rc::new(RefCell::new(Bus::new(rom)));
+    let cartridge = Rc::new(RefCell::new(Cartridge::load("test_roms/nestest.nes").unwrap()));
+    let ppu = Rc::new(RefCell::new(Ppu::new(Rc::clone(&cartridge))));
+    let bus = Rc::new(RefCell::new(Bus::new(Rc::clone(&ppu), Rc::clone(&cartridge))));
     let mut cpu = Cpu::new(Rc::clone(&bus));
     cpu.reset();
 
@@ -20,7 +22,7 @@ fn main() {
 
     // Tick PPU for the reset cycles (7 CPU cycles = 21 PPU cycles)
     for _ in 0..21 {
-        bus.borrow_mut().ppu.tick();
+        ppu.borrow_mut().tick();
     }
 
     loop {
@@ -33,9 +35,9 @@ fn main() {
         let cpu_cycles = cpu.step();
         for _ in 0..cpu_cycles * 3 {
             let mut bus = bus.borrow_mut();
-            bus.ppu.tick();
+            ppu.borrow_mut().tick();
 
-            if bus.ppu.poll_nmi() {
+            if ppu.borrow_mut().poll_nmi() {
                 bus.trigger_nmi();
             }
         }

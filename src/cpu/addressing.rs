@@ -1,5 +1,4 @@
 use super::Cpu;
-use crate::cpu::mem::Mem;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum AddressingMode {

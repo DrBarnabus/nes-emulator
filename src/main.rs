@@ -1,13 +1,15 @@
 #![windows_subsystem = "windows"]
 
 pub mod bus;
+pub mod cartridge;
+pub mod controller;
 pub mod cpu;
 pub mod emulator;
-pub mod joypad;
 pub mod ppu;
-pub mod rom;
 
+use cartridge::Cartridge;
 use clap::Parser;
+use controller::ControllerButton;
 use emulator::Emulator;
 use glow::HasContext;
 use glutin::config::ConfigTemplateBuilder;
@@ -19,10 +21,8 @@ use glutin_winit::DisplayBuilder;
 use imgui::{Condition, Context, FontSource};
 use imgui_glow_renderer::AutoRenderer;
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
-use joypad::JoypadButton;
 use ppu::render::frame::Frame;
 use raw_window_handle::HasWindowHandle;
-use rom::Rom;
 use std::collections::HashMap;
 use std::num::NonZeroU32;
 use std::time::Duration;
@@ -123,7 +123,7 @@ fn main() {
 
     let mut frame = Frame::new();
 
-    let rom = Rom::load(args.rom.as_str()).unwrap();
+    let rom = Cartridge::load(args.rom.as_str()).unwrap();
     let mut emulator = Emulator::new(rom);
     emulator.run(
         |_cpu| {
@@ -153,7 +153,7 @@ fn main() {
                                 }
 
                                 if let Some(button) = KEY_MAP.get(&keycode) {
-                                    cpu.bus.borrow_mut().joypad_1.set_button_state(*button, is_pressed)
+                                    cpu.bus.borrow_mut().controller_1.set_button_state(*button, is_pressed)
                                 }
                             }
                         }
@@ -247,9 +247,9 @@ fn main() {
                         if ui.collapsing_header("Input", imgui::TreeNodeFlags::DEFAULT_OPEN) {
                             text_bitflags_long(
                                 ui,
-                                "Joypad 1",
+                                "Controller 1",
                                 ["R", "L", "D", "U", "START", "SELECT", "B", "A"],
-                                cpu.bus.borrow().joypad_1.button_states.bits(),
+                                cpu.bus.borrow().controller_1.button_states.bits(),
                             );
                         }
 
@@ -264,7 +264,8 @@ fn main() {
                         }
 
                         if ui.collapsing_header("PPU Debug", imgui::TreeNodeFlags::DEFAULT_OPEN) {
-                            let ppu = &cpu.bus.borrow_mut().ppu;
+                            let cpu = cpu.bus.borrow_mut();
+                            let ppu = cpu.ppu.borrow_mut();
                             ui.text(format!("Cycle: {}", ppu.cycle));
                             ui.text(format!("Scanline: {}", ppu.scanline));
                             ui.text(format!("Frame: {}", ppu.frame));
@@ -295,8 +296,9 @@ fn main() {
                 gl.clear(glow::COLOR_BUFFER_BIT);
             }
 
-            let ppu = &cpu.bus.borrow_mut().ppu;
-            ppu::render::render(ppu, &mut frame);
+            let cpu = cpu.bus.borrow_mut();
+            let ppu = cpu.ppu.borrow_mut();
+            ppu::render::render(&ppu, &mut frame);
             update_rgb_texture(gl, nes_texture, NES_WIDTH as i32, NES_HEIGHT as i32, &frame.data);
 
             if debug_visible {
@@ -304,7 +306,7 @@ fn main() {
                 update_rgb_texture(gl, palette_texture, 8, 4, &palette_data);
 
                 for (i, pattern_table_texture) in pattern_table_textures.iter().enumerate() {
-                    let pattern_table_data = populate_pattern_table_texture(i, &ppu.chr_rom, &ppu.palette_table, active_palette);
+                    let pattern_table_data = populate_pattern_table_texture(i, &ppu.cartridge.borrow_mut().chr_rom, &ppu.palette_table, active_palette);
                     update_rgb_texture(gl, *pattern_table_texture, 128, 128, &pattern_table_data);
                 }
             }
@@ -478,16 +480,16 @@ fn text_bitflags_long(ui: &imgui::Ui, name: &str, labels: [&str; 8], bits: u8) {
 }
 
 lazy_static::lazy_static! {
-    pub static ref KEY_MAP: HashMap<KeyCode, JoypadButton> = {
+    pub static ref KEY_MAP: HashMap<KeyCode, ControllerButton> = {
         let mut map = HashMap::new();
-        map.insert(KeyCode::KeyS, JoypadButton::A);
-        map.insert(KeyCode::KeyA, JoypadButton::B);
-        map.insert(KeyCode::KeyQ, JoypadButton::SELECT);
-        map.insert(KeyCode::KeyW, JoypadButton::START);
-        map.insert(KeyCode::ArrowUp, JoypadButton::UP);
-        map.insert(KeyCode::ArrowDown, JoypadButton::DOWN);
-        map.insert(KeyCode::ArrowLeft, JoypadButton::LEFT);
-        map.insert(KeyCode::ArrowRight, JoypadButton::RIGHT);
+        map.insert(KeyCode::KeyS, ControllerButton::A);
+        map.insert(KeyCode::KeyA, ControllerButton::B);
+        map.insert(KeyCode::KeyQ, ControllerButton::SELECT);
+        map.insert(KeyCode::KeyW, ControllerButton::START);
+        map.insert(KeyCode::ArrowUp, ControllerButton::UP);
+        map.insert(KeyCode::ArrowDown, ControllerButton::DOWN);
+        map.insert(KeyCode::ArrowLeft, ControllerButton::LEFT);
+        map.insert(KeyCode::ArrowRight, ControllerButton::RIGHT);
 
         map
     };

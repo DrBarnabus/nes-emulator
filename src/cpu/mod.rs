@@ -1,12 +1,10 @@
 pub mod addressing;
 pub mod instructions;
-pub mod mem;
 pub mod opcode;
 pub mod trace;
 
 use super::bus::Bus;
 use addressing::AddressingMode;
-use mem::Mem;
 use opcode::{OPCODES_MAP, Opcode};
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -126,6 +124,23 @@ impl Cpu {
         }
 
         self.cycles += 1;
+    }
+
+    pub fn read(&mut self, address: u16) -> u8 {
+        self.bus.borrow_mut().read(address)
+    }
+
+    pub fn read_u16(&mut self, address: u16) -> u16 {
+        (self.read(address + 1) as u16) << 8 | (self.read(address) as u16)
+    }
+
+    pub fn write(&mut self, address: u16, value: u8) {
+        self.bus.borrow_mut().write(address, value);
+    }
+
+    pub fn write_u16(&mut self, address: u16, value: u16) {
+        self.write(address, (value >> 8) as u8);
+        self.write(address + 1, (value & 0xFF) as u8);
     }
 
     pub fn read_operand(&mut self, mode: AddressingMode, pc: u16) -> (u8, bool) {

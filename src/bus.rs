@@ -1,64 +1,58 @@
-use crate::cpu::mem::Mem;
-use crate::joypad::Joypad;
+use crate::cartridge::Cartridge;
+use crate::controller::Controller;
 use crate::ppu::Ppu;
-use crate::rom::Rom;
-
-const RAM: u16 = 0x0000;
-const RAM_MASK: u16 = 0x07FF;
-const RAM_END: u16 = 0x1FFF;
-
-const PPU_CTRL: u16 = 0x2000;
-const PPU_MASK: u16 = 0x2001;
-const PPU_STATUS: u16 = 0x2002;
-const PPU_OAM_ADDR: u16 = 0x2003;
-const PPU_OAM_DATA: u16 = 0x2004;
-const PPU_SCROLL: u16 = 0x2005;
-const PPU_ADDR: u16 = 0x2006;
-const PPU_DATA: u16 = 0x2007;
-const PPU_MIRROR: u16 = 0x2008;
-const PPU_MIRROR_END: u16 = 0x3FFF;
-const PPU_OAM_DMA: u16 = 0x4014;
-
-const JOYPAD_1: u16 = 0x4016;
-const JOYPAD_2: u16 = 0x4017;
-
-const PRG_ROM: u16 = 0x8000;
-const PRG_ROM_END: u16 = 0xFFFF;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 pub struct Bus {
-    ram: [u8; 0x800], // 2KB internal RAM
-    prg_rom: Vec<u8>,
+    pub ram: [u8; 2048], // 2KB internal RAM
+    pub ppu: Rc<RefCell<Ppu>>,
+    pub controller_1: Controller,
+    pub joypad_2: Controller,
 
-    pub ppu: Ppu,
-    pub joypad_1: Joypad,
+    pub cartridge: Rc<RefCell<Cartridge>>,
 
-    // Interrupt lines
     pub nmi_pending: bool,
     pub irq_pending: bool,
 }
 
 impl Bus {
-    pub fn new(rom: Rom) -> Self {
-        let ppu = Ppu::new(rom.chr_rom, rom.screen_mirroring);
-
+    pub fn new(ppu: Rc<RefCell<Ppu>>, cartridge: Rc<RefCell<Cartridge>>) -> Self {
         Self {
-            ram: [0; 0x800],
-            prg_rom: rom.prg_rom,
-
+            ram: [0; 2048],
             ppu,
-            joypad_1: Joypad::new(),
+            controller_1: Controller::new(),
+            joypad_2: Controller::new(),
+
+            cartridge,
 
             nmi_pending: false,
             irq_pending: false,
         }
     }
 
-    pub fn trigger_nmi(&mut self) {
-        self.nmi_pending = true;
+    pub fn read(&mut self, address: u16) -> u8 {
+        match address {
+            0x0000..=0x1FFF => self.ram[(address & 0x07FF) as usize],
+            0x2000..=0x3FFF => self.ppu.borrow_mut().cpu_read(address & 0x2007),
+            0x4000..=0x4017 => self.read_io(address),
+            0x4018..=0x401F => 0, // Open bus
+            0x4020..=0xFFFF => self.cartridge.borrow_mut().cpu_read(address),
+        }
     }
 
-    pub fn trigger_irq(&mut self) {
-        self.irq_pending = true;
+    pub fn write(&mut self, address: u16, value: u8) {
+        match address {
+            0x0000..=0x1FFF => self.ram[(address & 0x07FF) as usize] = value,
+            0x2000..=0x3FFF => self.ppu.borrow_mut().cpu_write(address & 0x2007, value),
+            0x4000..=0x4017 => self.write_io(address, value),
+            0x4018..=0x401F => {}
+            0x4020..=0xFFFF => self.cartridge.borrow_mut().cpu_write(address, value),
+        }
+    }
+
+    pub fn trigger_nmi(&mut self) {
+        self.nmi_pending = true;
     }
 
     pub fn poll_nmi(&mut self) -> bool {
@@ -67,76 +61,91 @@ impl Bus {
         pending
     }
 
+    pub fn trigger_irq(&mut self) {
+        self.irq_pending = true;
+    }
+
     pub fn poll_irq(&mut self) -> bool {
         let pending = self.irq_pending;
         self.irq_pending = false;
         pending
     }
 
-    fn read_prg_rom(&self, address: u16) -> u8 {
-        let mut address = address - 0x8000;
-        if self.prg_rom.len() == 0x4000 && address >= 0x4000 {
-            address %= 0x4000;
-        }
-
-        self.prg_rom[address as usize]
-    }
-}
-
-impl Mem for Bus {
-    fn read(&mut self, address: u16) -> u8 {
+    fn read_io(&mut self, address: u16) -> u8 {
         match address {
-            RAM..=RAM_END => self.ram[(address & RAM_MASK) as usize],
-            PPU_CTRL | PPU_MASK | PPU_OAM_ADDR | PPU_SCROLL | PPU_ADDR | PPU_OAM_DMA => {
-                // println!("Cannot read from write-only PPU address, attempted to read {:02x}", address);
-                0
-            }
-            PPU_STATUS => self.ppu.read_status(),
-            PPU_OAM_DATA => self.ppu.read_oam_data(),
-            PPU_DATA => self.ppu.read_data(),
-            PPU_MIRROR..=PPU_MIRROR_END => self.read(address & 0x2007),
-            JOYPAD_1 => self.joypad_1.read(),
-            JOYPAD_2 => {
-                // println!("Ignoring attempted memory access for joypad 2, attempted to read {:02x}", address);
-                0
-            }
-            PRG_ROM..=PRG_ROM_END => self.read_prg_rom(address),
-            _ => {
-                // println!("Ignoring attempted memory access, attempted to read {:02x}", address);
-                0
-            }
+            // APU Pulse 1
+            0x4000..=0x4003 => 0, // Write-only, open bus
+
+            // APU Pulse 2
+            0x4004..=0x4007 => 0, // Write-only, open bus
+
+            // APU Triangle
+            0x4008..=0x400B => 0, // Write-only, open bus
+
+            // APU Noise
+            0x400C..=0x400F => 0, // Write-only, open bus
+
+            // APU DMC
+            0x4010..=0x4013 => 0, // Write-only, open bus
+
+            // OAM DMA
+            0x4014 => 0, // Write-only, open bus
+
+            // TODO: APU Status
+            0x4015 => 0,
+
+            // Controller 1
+            0x4016 => self.controller_1.read(),
+
+            // Controller 2
+            0x4017 => self.joypad_2.read(),
+
+            _ => unreachable!(),
         }
     }
 
-    fn write(&mut self, address: u16, value: u8) {
+    fn write_io(&mut self, address: u16, value: u8) {
         match address {
-            RAM..=RAM_END => self.ram[(address & RAM_MASK) as usize] = value,
-            PPU_CTRL => self.ppu.write_to_ppu_ctrl(value),
-            PPU_MASK => self.ppu.write_to_ppu_mask(value),
-            PPU_STATUS => panic!("Cannot write to PPU status, attempted to write {:02x}", address),
-            PPU_OAM_ADDR => self.ppu.write_to_oam_addr(value),
-            PPU_OAM_DATA => self.ppu.write_to_oam_data(value),
-            PPU_SCROLL => self.ppu.write_to_ppu_scroll(value),
-            PPU_ADDR => self.ppu.write_to_ppu_addr(value),
-            PPU_DATA => self.ppu.write_data(value),
-            PPU_MIRROR..=PPU_MIRROR_END => self.write(address & 0x2007, value),
-            PPU_OAM_DMA => {
-                let mut buffer = [0u8; 256];
-                let high_byte = (value as u16) << 8;
-                for i in 0..256 {
-                    buffer[i as usize] = self.read(high_byte + i);
-                }
+            // TODO: APU Pulse 1
+            0x4000..=0x4003 => {}
 
-                self.ppu.write_to_oam_dma(&buffer);
+            // TODO: APU Pulse 2
+            0x4004..=0x4007 => {}
+
+            // TODO: APU Triangle
+            0x4008..=0x400B => {}
+
+            // TODO: APU Noise
+            0x400C..=0x400F => {}
+
+            // TODO: APU DMC
+            0x4010..=0x4013 => {}
+
+            // OAM DMA
+            0x4014 => self.write_oam_dma(value),
+
+            // TODO: APU Status
+            0x4015 => {}
+
+            0x4016 => {
+                self.controller_1.write(value);
+                self.joypad_2.write(value);
             }
-            JOYPAD_1 => self.joypad_1.write(value),
-            JOYPAD_2 => {
-                // println!("Ignoring attempted memory access for joypad 2, attempted to write {:02x}", address);
-            }
-            PRG_ROM..=PRG_ROM_END => panic!("Cannot write to PRG ROM, attempted to write {:02x}", address),
-            _ => {
-                // println!("Ignoring attempted memory access, attempted to write {:02x}", address);
-            }
+
+            // TODO: APU Frame Counter
+            0x4017 => {}
+
+            _ => unreachable!(),
         }
+    }
+
+    fn write_oam_dma(&mut self, value: u8) {
+        let mut buffer = [0u8; 256];
+        let high_byte = (value as u16) << 8;
+        for i in 0..256 {
+            buffer[i as usize] = self.read(high_byte + i);
+        }
+
+        self.ppu.borrow_mut().write_to_oam_dma(&buffer);
     }
 }

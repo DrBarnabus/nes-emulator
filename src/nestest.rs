@@ -1,9 +1,11 @@
+pub mod apu;
 pub mod bus;
 pub mod cartridge;
 pub mod controller;
 pub mod cpu;
 pub mod ppu;
 
+use crate::apu::Apu;
 use crate::ppu::Ppu;
 use bus::Bus;
 use cartridge::Cartridge;
@@ -14,7 +16,8 @@ use std::rc::Rc;
 fn main() {
     let cartridge = Rc::new(RefCell::new(Cartridge::load("test_roms/nestest.nes").unwrap()));
     let ppu = Rc::new(RefCell::new(Ppu::new(Rc::clone(&cartridge))));
-    let bus = Rc::new(RefCell::new(Bus::new(Rc::clone(&ppu), Rc::clone(&cartridge))));
+    let apu = Rc::new(RefCell::new(Apu::new()));
+    let bus = Rc::new(RefCell::new(Bus::new(Rc::clone(&ppu), Rc::clone(&apu), Rc::clone(&cartridge))));
     let mut cpu = Cpu::new(Rc::clone(&bus));
     cpu.reset();
 

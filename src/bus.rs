@@ -1,3 +1,4 @@
+use crate::apu::Apu;
 use crate::cartridge::Cartridge;
 use crate::controller::Controller;
 use crate::ppu::Ppu;
@@ -7,8 +8,9 @@ use std::rc::Rc;
 pub struct Bus {
     pub ram: [u8; 2048], // 2KB internal RAM
     pub ppu: Rc<RefCell<Ppu>>,
+    pub apu: Rc<RefCell<Apu>>,
     pub controller_1: Controller,
-    pub joypad_2: Controller,
+    pub controller_2: Controller,
 
     pub cartridge: Rc<RefCell<Cartridge>>,
 
@@ -17,12 +19,13 @@ pub struct Bus {
 }
 
 impl Bus {
-    pub fn new(ppu: Rc<RefCell<Ppu>>, cartridge: Rc<RefCell<Cartridge>>) -> Self {
+    pub fn new(ppu: Rc<RefCell<Ppu>>, apu: Rc<RefCell<Apu>>, cartridge: Rc<RefCell<Cartridge>>) -> Self {
         Self {
             ram: [0; 2048],
             ppu,
+            apu,
             controller_1: Controller::new(),
-            joypad_2: Controller::new(),
+            controller_2: Controller::new(),
 
             cartridge,
 
@@ -73,32 +76,15 @@ impl Bus {
 
     fn read_io(&mut self, address: u16) -> u8 {
         match address {
-            // APU Pulse 1
-            0x4000..=0x4003 => 0, // Write-only, open bus
-
-            // APU Pulse 2
-            0x4004..=0x4007 => 0, // Write-only, open bus
-
-            // APU Triangle
-            0x4008..=0x400B => 0, // Write-only, open bus
-
-            // APU Noise
-            0x400C..=0x400F => 0, // Write-only, open bus
-
-            // APU DMC
-            0x4010..=0x4013 => 0, // Write-only, open bus
-
             // OAM DMA
             0x4014 => 0, // Write-only, open bus
 
-            // TODO: APU Status
-            0x4015 => 0,
-
-            // Controller 1
+            // Controller 1 & 2
             0x4016 => self.controller_1.read(),
+            0x4017 => self.controller_2.read(),
 
-            // Controller 2
-            0x4017 => self.joypad_2.read(),
+            // APU
+            0x4000..=0x4017 => self.apu.borrow_mut().cpu_read(address),
 
             _ => unreachable!(),
         }
@@ -106,34 +92,17 @@ impl Bus {
 
     fn write_io(&mut self, address: u16, value: u8) {
         match address {
-            // TODO: APU Pulse 1
-            0x4000..=0x4003 => {}
-
-            // TODO: APU Pulse 2
-            0x4004..=0x4007 => {}
-
-            // TODO: APU Triangle
-            0x4008..=0x400B => {}
-
-            // TODO: APU Noise
-            0x400C..=0x400F => {}
-
-            // TODO: APU DMC
-            0x4010..=0x4013 => {}
-
             // OAM DMA
             0x4014 => self.write_oam_dma(value),
 
-            // TODO: APU Status
-            0x4015 => {}
-
+            // Controller 1 & 2 Strobe
             0x4016 => {
                 self.controller_1.write(value);
-                self.joypad_2.write(value);
+                self.controller_2.write(value);
             }
 
-            // TODO: APU Frame Counter
-            0x4017 => {}
+            // APU
+            0x4000..=0x4017 => self.apu.borrow_mut().cpu_write(address, value),
 
             _ => unreachable!(),
         }

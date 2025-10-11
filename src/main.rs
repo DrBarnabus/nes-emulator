@@ -1,5 +1,7 @@
-#![windows_subsystem = "windows"]
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+pub mod apu;
+pub mod audio;
 pub mod bus;
 pub mod cartridge;
 pub mod controller;
@@ -135,8 +137,7 @@ fn main() -> Result<()> {
     let mut frame = Frame::new();
 
     let cartridge = Cartridge::load(args.rom.as_str()).context("Failed to load ROM file into Cartridge")?;
-
-    let mut emulator = Emulator::new(cartridge);
+    let mut emulator = Emulator::new(cartridge).context("Failed to create emulator")?;
     emulator.run(
         |_cpu| {
             // Per-instruction callback, which can be used for debugging/tracing

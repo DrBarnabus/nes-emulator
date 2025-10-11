@@ -20,29 +20,25 @@ impl Mapper000 {
 impl Mapper for Mapper000 {
     fn cpu_read(&mut self, address: u16) -> MappedRead {
         match address {
-            0x6000..=0x7FFF => MappedRead::Address(address - 0x6000),
-            0x8000..=0xFFFF => MappedRead::Address(if self.prg_banks > 1 { address - 0x8000 } else { (address - 0x8000) & 0x3FFF }),
+            0x6000..=0x7FFF => MappedRead::PrgRam(address - 0x6000),
+            0x8000..=0xFFFF => MappedRead::PrgRom(if self.prg_banks > 1 { address - 0x8000 } else { (address - 0x8000) & 0x3FFF }),
             _ => MappedRead::None,
         }
     }
 
     fn cpu_write(&mut self, address: u16, _value: u8) -> MappedWrite {
         match address {
-            0x6000..=0x7FFF => MappedWrite::Address(address - 0x6000),
+            0x6000..=0x7FFF => MappedWrite::PrgRam(address - 0x6000),
             _ => MappedWrite::None, // ROM is read-only
         }
     }
 
-    fn ppu_read(&mut self, address: u16) -> MappedRead {
-        MappedRead::Address(address)
+    fn ppu_read(&mut self, address: u16) -> usize {
+        address as usize
     }
 
-    fn ppu_write(&mut self, address: u16, _value: u8) -> MappedWrite {
-        if self.chr_banks == 0 {
-            MappedWrite::Address(address)
-        } else {
-            MappedWrite::None
-        }
+    fn ppu_write(&mut self, address: u16, _value: u8) -> Option<usize> {
+        if self.chr_banks == 0 { Some(address as usize) } else { None }
     }
 
     fn mirroring(&self) -> Mirroring {

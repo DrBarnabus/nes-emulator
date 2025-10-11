@@ -92,54 +92,41 @@ impl Cartridge {
     pub fn cpu_read(&mut self, address: u16) -> u8 {
         match self.mapper.cpu_read(address) {
             MappedRead::Data(value) => value,
-            MappedRead::Address(address) if address < self.prg_rom.len() as u16 => self.prg_rom[address as usize],
+            MappedRead::PrgRom(address) if address < self.prg_rom.len() as u16 => self.prg_rom[address as usize],
+            MappedRead::PrgRam(address) if address < self.prg_ram.len() as u16 => self.prg_ram[address as usize],
             _ => 0, // Open bus
         }
     }
 
     /// CPU writes to $4020-$FFFF
     pub fn cpu_write(&mut self, address: u16, value: u8) {
-        match self.mapper.cpu_write(address, value) {
-            MappedWrite::Address(address) => {
-                let address = address as usize;
-                if address < self.prg_ram.len() {
-                    self.prg_ram[address] = value;
-                }
-            }
-            MappedWrite::PrgRam(address) => {
-                let address = address as usize;
-                if address < self.prg_ram.len() {
-                    self.prg_ram[address] = value;
-                }
-            }
-            MappedWrite::None => {}
+        if let MappedWrite::PrgRam(address) = self.mapper.cpu_write(address, value)
+            && address < self.prg_ram.len() as u16
+        {
+            self.prg_ram[address as usize] = value;
         }
     }
 
     /// PPU reads from $0000-$1FFF
     pub fn ppu_read(&mut self, address: u16) -> u8 {
-        match self.mapper.ppu_read(address) {
-            MappedRead::Data(value) => value,
-            MappedRead::Address(address) => {
-                if !self.chr_rom.is_empty() && address < self.chr_rom.len() as u16 {
-                    self.chr_rom[address as usize]
-                } else if !self.chr_rom.is_empty() && address < self.chr_ram.len() as u16 {
-                    self.chr_ram[address as usize]
-                } else {
-                    0 // Open bus
-                }
-            }
-            MappedRead::None => 0, // Open bus
+        let mapped_address = self.mapper.ppu_read(address);
+
+        if !self.chr_rom.is_empty() && mapped_address < self.chr_rom.len() {
+            self.chr_rom[mapped_address]
+        } else if !self.chr_ram.is_empty() && mapped_address < self.chr_ram.len() {
+            self.chr_ram[mapped_address]
+        } else {
+            0
         }
     }
 
     /// PPU writes to $0000-$1FFF (CHR-RAM only)
     pub fn ppu_write(&mut self, address: u16, value: u8) {
-        if let MappedWrite::Address(address) = self.mapper.ppu_write(address, value)
+        if let Some(mapped_address) = self.mapper.ppu_write(address, value)
             && !self.chr_ram.is_empty()
-            && address < self.chr_ram.len() as u16
+            && mapped_address < self.chr_ram.len()
         {
-            self.chr_ram[address as usize] = value;
+            self.chr_ram[mapped_address] = value;
         }
     }
 

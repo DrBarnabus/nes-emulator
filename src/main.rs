@@ -7,6 +7,7 @@ pub mod cpu;
 pub mod emulator;
 pub mod ppu;
 
+use anyhow::{Context as _, Result};
 use cartridge::Cartridge;
 use clap::Parser;
 use controller::ControllerButton;
@@ -32,7 +33,6 @@ use winit::event_loop::EventLoop;
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::platform::pump_events::EventLoopExtPumpEvents;
 use winit::window::Window;
-use anyhow::{Context as _, Result};
 
 const TITLE: &str = "NES Emulator";
 const NES_WIDTH: u32 = 256;
@@ -76,7 +76,12 @@ fn create_window(debug: bool) -> Result<(EventLoop<()>, Window, Surface<WindowSu
     let window = window.unwrap();
 
     let context_attributes = ContextAttributesBuilder::new().build(Some(window.window_handle()?.as_raw()));
-    let context = unsafe { config.display().create_context(&config, &context_attributes).context("Failed to create context")? };
+    let context = unsafe {
+        config
+            .display()
+            .create_context(&config, &context_attributes)
+            .context("Failed to create context")?
+    };
 
     let surface_attributes = SurfaceAttributesBuilder::<WindowSurface>::new().with_srgb(Some(true)).build(
         window.window_handle()?.as_raw(),
@@ -84,7 +89,12 @@ fn create_window(debug: bool) -> Result<(EventLoop<()>, Window, Surface<WindowSu
         NonZeroU32::new(window_height).unwrap(),
     );
 
-    let surface = unsafe { config.display().create_window_surface(&config, &surface_attributes).context("Failed to create surface")? };
+    let surface = unsafe {
+        config
+            .display()
+            .create_window_surface(&config, &surface_attributes)
+            .context("Failed to create surface")?
+    };
 
     let context = context.make_current(&surface).context("Failed to make context current")?;
 

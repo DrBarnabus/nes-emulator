@@ -1,5 +1,6 @@
 mod frame_counter;
 mod pulse_channel;
+mod envelope;
 
 use frame_counter::*;
 use pulse_channel::*;
@@ -152,7 +153,9 @@ impl Apu {
     }
 
     pub fn output(&self) -> f32 {
-        self.pulse_1.output()
+        let pulse_sum = self.pulse_1.output() + self.pulse_2.output();
+
+        (pulse_sum / 30.0) * 2.0 - 1.0
     }
 
     pub fn filtered_output(&mut self) -> f32 {

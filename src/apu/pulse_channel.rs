@@ -1,8 +1,5 @@
 use crate::apu::envelope::Envelope;
-
-const LENGTH_TABLE: [u8; 32] = [
-    10, 254, 20, 2, 40, 4, 80, 6, 160, 8, 60, 10, 14, 12, 26, 14, 12, 16, 24, 18, 48, 20, 96, 22, 192, 24, 72, 26, 16, 28, 32, 30,
-];
+use crate::apu::LENGTH_TABLE;
 
 const DUTY_CYCLES: [[u8; 8]; 4] = [
     [0, 1, 0, 0, 0, 0, 0, 0], // 12.5%
@@ -24,9 +21,9 @@ pub struct PulseChannel {
 
     timer_period: u16,
     timer: u16,
-    length_counter: u8,
+    pub length_counter: u8,
 
-    enabled: bool,
+    pub enabled: bool,
     duty_position: u8,
     envelope: Envelope,
     sweep_unit: SweepUnit,
@@ -64,10 +61,7 @@ impl PulseChannel {
         }
     }
 
-    pub fn length_counter(&self) -> u8 {
-        self.length_counter
-    }
-
+    /// $4000/$4004
     pub fn write_control(&mut self, value: u8) {
         self.duty_cycle = (value >> 6) & 0x03;
         self.length_counter_halt = value & 0x20 != 0;
@@ -75,6 +69,7 @@ impl PulseChannel {
         self.volume = value & 0x0F;
     }
 
+    /// $4001/$4005
     pub fn write_sweep(&mut self, value: u8) {
         self.sweep_enabled = value & 0x80 != 0;
         self.sweep_period = (value >> 4) & 0x07;
@@ -84,13 +79,17 @@ impl PulseChannel {
         self.sweep_unit.reload();
     }
 
+    /// $4002/$4006
     pub fn write_timer_low(&mut self, value: u8) {
         self.timer_period = (self.timer_period & 0x0700) | value as u16;
     }
 
+    /// $4003/$4007
     pub fn write_timer_high(&mut self, value: u8) {
         let length_index = (value >> 3) & 0x1F;
-        self.length_counter = LENGTH_TABLE[length_index as usize];
+        if self.enabled {
+            self.length_counter = LENGTH_TABLE[length_index as usize];
+        }
 
         self.timer_period = (self.timer_period & 0x00FF) | ((value & 0x07) as u16) << 8;
 
@@ -98,6 +97,22 @@ impl PulseChannel {
         self.envelope.start = true;
     }
 
+    /// Clock the timer (called at CPU/2 rate)
+    pub fn clock_timer(&mut self) {
+        if self.timer == 0 {
+            self.timer = self.timer_period;
+            self.duty_position = (self.duty_position + 1) & 0x07;
+        } else {
+            self.timer -= 1;
+        }
+    }
+
+    /// Clock the envelope (called at 240 Hz in 4-step, 192 Hz in 5-step)
+    pub fn clock_envelope(&mut self) {
+        self.envelope.clock(self.length_counter_halt, self.constant_volume, self.volume);
+    }
+
+    /// Clock the sweep unit (called at 120 Hz in 4-step, 96 Hz in 5-step)
     pub fn clock_sweep(&mut self, channel_number: u8) {
         let change_amount = self.timer_period >> self.sweep_shift;
 
@@ -118,23 +133,11 @@ impl PulseChannel {
         }
     }
 
-    pub fn clock_timer(&mut self) {
-        if self.timer == 0 {
-            self.timer = self.timer_period;
-            self.duty_position = (self.duty_position + 1) & 0x07;
-        } else {
-            self.timer -= 1;
-        }
-    }
-
+    /// Clock the length counter (called at 120 Hz in 4-step, 96 Hz in 5-step)
     pub fn clock_length_counter(&mut self) {
         if !self.length_counter_halt && self.length_counter > 0 {
             self.length_counter -= 1;
         }
-    }
-
-    pub fn clock_envelope(&mut self) {
-        self.envelope.clock(self.length_counter_halt, self.constant_volume, self.volume);
     }
 
     pub fn output(&self) -> f32 {

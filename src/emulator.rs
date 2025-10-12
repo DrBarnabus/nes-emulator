@@ -95,6 +95,11 @@ impl Emulator {
             self.ppu.borrow_mut().tick();
         }
 
+        // Tick APU for the CPU reset cycles (7 CPU cycles)
+        for _ in 0..7 {
+            self.apu.borrow_mut().clock();
+        }
+
         const SYNC_THRESHOLD: u64 = 1000;
         let mut timing_controller = TimingController::default();
         let mut accumulated_cycles = 0u64;
@@ -131,7 +136,7 @@ impl Emulator {
                 let apu_sample = apu.filtered_output();
                 self.audio.push_source_sample(apu_sample);
 
-                if apu.get_interrupt_flag() {
+                if apu.irq_pending() {
                     self.bus.borrow_mut().trigger_irq();
                 }
             }

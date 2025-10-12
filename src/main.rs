@@ -245,6 +245,20 @@ fn main() -> Result<()> {
                     .collapsible(false)
                     .title_bar(false)
                     .build(|| {
+                        ui.text(format!("Audio Test Result: {:02X}", cpu.read(0x6000)));
+
+                        let mut output_str = String::new();
+                        for address in 0x6004..=0x6FFF {
+                            let byte = cpu.read(address);
+                            if byte == 0 {
+                                break;
+                            }
+
+                            output_str.push(byte as char);
+                        }
+
+                        ui.text_wrapped(format!("Audio Test Output: {}", output_str));
+
                         if ui.collapsing_header("Display", imgui::TreeNodeFlags::DEFAULT_OPEN) {
                             ui.text(format!("Window: {}×{}", display_width, display_height));
                             ui.text(format!(

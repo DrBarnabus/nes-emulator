@@ -1,117 +1,177 @@
-const FOUR_STEP_CYCLES: [u32; 5] = [
-    3728,  // Step 0 -> Step 1 (Quarter Frame)
-    7456,  // Step 1 -> Step 2 (Half Frame)
-    11184, // Step 2 -> Step 3 (Quarter Frame)
-    14914, // Step 3 -> Step 4 (Half Frame + IRQ)
-    14915, // Step 4 -> Step 0 (IRQ again, then reset)
-];
-
-const FIVE_STEP_CYCLES: [u32; 5] = [
-    3728,  // Step 0 -> Step 1 (Quarter frame)
-    7456,  // Step 1 -> Step 2 (Half Frame)
-    11185, // Step 2 -> Step 3 (Quarter Frame)
-    14914, // Step 3 -> Step 4 (no IRQ)
-    18640, // Step 4 -> Step 0 (Half Frame, then reset)
-];
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum FrameMode {
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum FrameCounterMode {
     FourStep,
     FiveStep,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum FrameEvent {
-    QuarterFrame,
-    HalfFrame,
-    SetIrq,
+#[derive(Debug, Default)]
+pub struct ClockSignals {
+    pub clock_envelopes: bool,
+    pub clock_length: bool,
+    pub irq: bool,
 }
 
 pub struct FrameCounter {
-    pub mode: FrameMode,
-    pub irq_inhibit: bool,
+    mode: FrameCounterMode,
+    cycle_counter: u32,
+    irq_inhibit: bool,
+    pub irq_flag: bool,
 
-    pub cycle: u32,
-    pub interrupt_flag: bool,
-
-    write_delay: Option<u8>,
+    write_delay_counter: u8,
+    pending_write: Option<u8>,
 }
 
 impl Default for FrameCounter {
     fn default() -> Self {
         Self {
-            mode: FrameMode::FourStep,
+            mode: FrameCounterMode::FourStep,
+            cycle_counter: 0,
             irq_inhibit: false,
-            cycle: 0,
-            interrupt_flag: false,
-            write_delay: None,
+            irq_flag: false,
+            write_delay_counter: 0,
+            pending_write: None,
         }
     }
 }
 
 impl FrameCounter {
     pub fn write(&mut self, value: u8) {
-        self.mode = if value & 0x80 != 0 { FrameMode::FiveStep } else { FrameMode::FourStep };
-        self.irq_inhibit = value & 0x40 != 0;
-
-        self.write_delay = Some(2);
-
-        if self.irq_inhibit {
-            self.interrupt_flag = false;
-        }
+        self.pending_write = Some(value);
+        self.write_delay_counter = 4;
     }
 
-    pub fn clock(&mut self) -> Option<FrameEvent> {
-        if let Some(delay) = self.write_delay {
-            if delay > 0 {
-                self.write_delay = Some(delay - 1)
-            } else {
-                self.write_delay = None;
-                self.cycle = 0;
+    pub fn clock(&mut self) -> ClockSignals {
+        let mut signals = ClockSignals::default();
 
-                if self.mode == FrameMode::FiveStep {
-                    return Some(FrameEvent::HalfFrame);
+        if self.write_delay_counter > 0 {
+            self.write_delay_counter -= 1;
+
+            if self.write_delay_counter == 0 {
+                if let Some(value) = self.pending_write {
+                    let new_mode = if value & 0x80 != 0 { FrameCounterMode::FiveStep } else { FrameCounterMode::FourStep };
+
+                    self.irq_inhibit = value & 0x40 != 0;
+                    if self.irq_inhibit {
+                        self.irq_flag = false;
+                    }
+
+                    self.cycle_counter = 0;
+                    self.mode = new_mode;
+
+                    if new_mode == FrameCounterMode::FiveStep {
+                        signals.clock_envelopes = true;
+                        signals.clock_length = true;
+                    }
+
+                    self.pending_write = None;
                 }
             }
         }
 
-        self.cycle += 1;
-
-        let (cycles_table, _last_step) = match self.mode {
-            FrameMode::FourStep => (&FOUR_STEP_CYCLES, 4),
-            FrameMode::FiveStep => (&FIVE_STEP_CYCLES, 5),
-        };
+        self.cycle_counter += 1;
 
         match self.mode {
-            FrameMode::FourStep => match self.cycle {
-                c if c == cycles_table[0] => Some(FrameEvent::QuarterFrame),
-                c if c == cycles_table[1] => Some(FrameEvent::HalfFrame),
-                c if c == cycles_table[2] => Some(FrameEvent::QuarterFrame),
-                c if c == cycles_table[3] => {
-                    if !self.irq_inhibit {
-                        self.interrupt_flag = true;
-                    }
+            FrameCounterMode::FourStep => self.clock_four_step(&mut signals),
+            FrameCounterMode::FiveStep => self.clock_five_step(&mut signals),
+        }
 
-                    self.cycle = 0;
-                    Some(FrameEvent::SetIrq)
+        signals.irq = self.irq_flag && !self.irq_inhibit;
+
+        let apu_cycle = self.cycle_counter / 2;
+        let get_cycle = self.cycle_counter % 2 == 0;
+
+        let interesting_cycle = match self.mode {
+            FrameCounterMode::FourStep => {
+                match (apu_cycle, get_cycle) {
+                    (3728, false) => true,
+                    (7456, false) => true,
+                    (11185, false) => true,
+                    (14914, true) => true,
+                    (14914, false) => true,
+                    (0, true) => true,
+                    _ => false,
                 }
-                _ => None,
             },
-            FrameMode::FiveStep => match self.cycle {
-                c if c == cycles_table[0] => Some(FrameEvent::QuarterFrame),
-                c if c == cycles_table[1] => Some(FrameEvent::HalfFrame),
-                c if c == cycles_table[2] => Some(FrameEvent::QuarterFrame),
-                c if c == cycles_table[3] => None,
-                c if c == cycles_table[4] => {
-                    self.cycle = 0;
-                    Some(FrameEvent::HalfFrame)
+            FrameCounterMode::FiveStep => {
+                match (apu_cycle, get_cycle) {
+                    (3728, false) => true,
+                    (7456, false) => true,
+                    (11185, false) => true,
+                    (14914, false) => true,
+                    (18640, false) => true,
+                    (0, true) => true,
+                    _ => false,
                 }
-                _ => None,
+            }
+        };
+
+        if interesting_cycle {
+            println!("APU Debug: {:?}, {}, {} ({}), {}, {}, {}",
+                     self.mode,
+                     self.cycle_counter,
+                     apu_cycle,
+                     if get_cycle { "get" } else { "put" },
+                     signals.clock_envelopes,
+                     signals.clock_length,
+                     signals.irq);
+        }
+
+        signals
+    }
+
+    fn clock_four_step(&mut self, signals: &mut ClockSignals) {
+        match self.cycle_counter {
+            7457 => {
+                signals.clock_envelopes = true;
             },
+            14913 => {
+                signals.clock_envelopes = true;
+                signals.clock_length = true;
+            },
+            22371 => {
+                signals.clock_envelopes = true;
+            },
+            29828 => {
+                if !self.irq_inhibit {
+                    self.irq_flag = true;
+                }
+            },
+            29829 => {
+                signals.clock_envelopes = true;
+                signals.clock_length = true;
+
+                if !self.irq_inhibit {
+                    self.irq_flag = true;
+                }
+            },
+            29830 => {
+                self.cycle_counter = 0;
+            }
+            _ => {},
         }
     }
 
-    pub fn get_interrupt_flag(&self) -> bool {
-        self.interrupt_flag && !self.irq_inhibit
+    fn clock_five_step(&mut self, signals: &mut ClockSignals) {
+        match self.cycle_counter {
+            7457 => {
+                signals.clock_envelopes = true;
+            },
+            14913 => {
+                signals.clock_envelopes = true;
+                signals.clock_length = true;
+            },
+            22371 => {
+                signals.clock_envelopes = true;
+            },
+            29829 => {},
+            37281 => {
+                signals.clock_envelopes = true;
+                signals.clock_length = true;
+            }
+            37282 => {
+                self.cycle_counter = 0;
+            }
+            _ => {},
+        }
     }
 }

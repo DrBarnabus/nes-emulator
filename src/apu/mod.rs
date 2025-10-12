@@ -1,19 +1,31 @@
 mod frame_counter;
 mod pulse_channel;
 mod envelope;
+mod triangle_channel;
+mod noise_channel;
+mod dmc_channel;
 
 use frame_counter::*;
 use pulse_channel::*;
+use triangle_channel::*;
+use noise_channel::*;
+use dmc_channel::*;
+
+pub const LENGTH_TABLE: [u8; 32] = [
+    10, 254, 20, 2, 40, 4, 80, 6, 160, 8, 60, 10, 14, 12, 26, 14, 12, 16, 24, 18, 48, 20, 96, 22, 192, 24, 72, 26, 16, 28, 32, 30,
+];
 
 pub struct Apu {
     pulse_1: PulseChannel,
     pulse_2: PulseChannel,
-    // TODO: triangle: TriangleChannel,
-    // TODO: noise: NoiseChannel,
-    // TODO: dmc: DmcChannel,
-    frame_counter: FrameCounter,
+    triangle: TriangleChannel,
+    noise: NoiseChannel,
+    dmc: DmcChannel,
 
+    frame_counter: FrameCounter,
     cycle: u64,
+    frame_irq: bool,
+    dmc_irq: bool,
 
     // Audio processing
     high_pass: HighPassFilter,
@@ -27,8 +39,14 @@ impl Apu {
         Self {
             pulse_1: PulseChannel::default(),
             pulse_2: PulseChannel::default(),
+            triangle: TriangleChannel::default(),
+            noise: NoiseChannel::default(),
+            dmc: DmcChannel::default(),
+
             frame_counter: FrameCounter::default(),
             cycle: 0,
+            frame_irq: false,
+            dmc_irq: false,
 
             high_pass: HighPassFilter::new(90.0, NTSC_CPU_FREQUENCY),
             low_pass: LowPassFilter::new(14000.0, NTSC_CPU_FREQUENCY),
@@ -74,16 +92,16 @@ impl Apu {
             0x4007 => self.pulse_2.write_timer_high(value),
 
             // Triangle Channel
-            0x4008 => {}
-            0x4009 => {}
-            0x400A => {}
-            0x400B => {}
+            0x4008 => self.triangle.write_control(value),
+            0x4009 => { /* Unused */ }
+            0x400A => self.triangle.write_timer_low(value),
+            0x400B => self.triangle.write_timer_high(value),
 
             // Noise Channel
-            0x400C => {}
-            0x400D => {}
-            0x400E => {}
-            0x400F => {}
+            0x400C => self.noise.write_control(value),
+            0x400D => { /* Unused */ }
+            0x400E => self.noise.write_timer_low(value),
+            0x400F => self.noise.write_timer_high(value),
 
             // DMC Channel
             0x4010 => {}
@@ -95,7 +113,9 @@ impl Apu {
             0x4015 => self.write_status(value),
 
             // Frame Counter
-            0x4017 => self.frame_counter.write(value),
+            0x4017 => {
+                self.frame_counter.write(value);
+            },
 
             _ => unreachable!(),
         }
@@ -104,23 +124,36 @@ impl Apu {
     fn read_status(&mut self) -> u8 {
         let mut status = 0;
 
-        if self.pulse_1.length_counter() > 0 {
+        if self.pulse_1.length_counter > 0 {
             status |= 0x01;
         }
-        if self.pulse_2.length_counter() > 0 {
+
+        if self.pulse_2.length_counter > 0 {
             status |= 0x02;
         }
-        // TODO: Triangle Channel
-        // TODO: Noise Channel
-        // TODO: DMC Channel
 
-        if self.frame_counter.irq_inhibit {
+        if self.triangle.length_counter > 0 {
+            status |= 0x04;
+        }
+
+        if self.noise.length_counter > 0 {
+            status |= 0x08;
+        }
+
+        if self.dmc.bytes_remaining > 0 {
+            status |= 0x10;
+        }
+
+        if self.frame_irq {
             status |= 0x40;
         }
 
-        // TODO: DMC Interrupt Flag
+        if self.dmc_irq {
+            status |= 0x80;
+        }
 
-        self.frame_counter.interrupt_flag = false;
+        self.frame_irq = false;
+        self.frame_counter.irq_flag = false;
 
         status
     }
@@ -128,26 +161,40 @@ impl Apu {
     fn write_status(&mut self, value: u8) {
         self.pulse_1.set_enabled(value & 0x01 != 0);
         self.pulse_2.set_enabled(value & 0x02 != 0);
-        // TODO: Triangle Channel Enable
-        // TODO: Noise Channel Enable
-        // TODO: DMC Channel Enable
+        self.triangle.set_enabled(value & 0x04 != 0);
+        self.noise.set_enabled(value & 0x08 != 0);
+        self.dmc.set_enabled(value & 0x10 != 0);
     }
 
     pub fn clock(&mut self) {
-        if let Some(event) = self.frame_counter.clock() {
-            match event {
-                FrameEvent::QuarterFrame => {
-                    self.clock_quarter_frame();
-                }
-                FrameEvent::HalfFrame => {
-                    self.clock_half_frame();
-                    self.clock_quarter_frame();
-                }
-                FrameEvent::SetIrq => {}
-            }
+        let signals = self.frame_counter.clock();
+
+        if signals.clock_envelopes {
+            self.pulse_1.clock_envelope();
+            self.pulse_2.clock_envelope();
+            self.noise.clock_envelope();
+            self.triangle.clock_linear_counter();
         }
 
-        self.clock_timers();
+        if signals.clock_length {
+            self.pulse_1.clock_length_counter();
+            self.pulse_1.clock_sweep(1);
+            self.pulse_2.clock_length_counter();
+            self.pulse_2.clock_sweep(2);
+            self.triangle.clock_length_counter();
+            self.noise.clock_length_counter();
+        }
+
+        self.frame_irq = signals.irq;
+
+        if (self.cycle & 1) == 0 {
+            self.pulse_1.clock_timer();
+            self.pulse_2.clock_timer();
+            self.noise.clock_timer();
+        }
+
+        self.triangle.clock_timer();
+        self.dmc.clock_timer();
 
         self.cycle += 1;
     }
@@ -165,34 +212,8 @@ impl Apu {
         self.low_pass.process(high_passed)
     }
 
-    pub fn get_interrupt_flag(&mut self) -> bool {
-        self.frame_counter.get_interrupt_flag()
-    }
-
-    fn clock_quarter_frame(&mut self) {
-        self.pulse_1.clock_envelope();
-        self.pulse_2.clock_envelope();
-        // TODO: Noise Channel Clock Envelope
-
-        // TODO: Triangle Channel Clock Linear Counter
-    }
-
-    fn clock_half_frame(&mut self) {
-        self.pulse_1.clock_length_counter();
-        self.pulse_2.clock_length_counter();
-        // TODO: Triangle Channel Clock Length Counter
-        // TODO: Noise Channel Clock Length Counter
-
-        self.pulse_1.clock_sweep(1);
-        self.pulse_1.clock_sweep(2);
-    }
-
-    fn clock_timers(&mut self) {
-        self.pulse_1.clock_timer();
-        self.pulse_2.clock_timer();
-
-        // TODO: Triangle Channel Clock Timer
-        // TODO: Noise Channel Clock Timer
+    pub fn irq_pending(&mut self) -> bool {
+        self.frame_irq || self.dmc_irq
     }
 }
 

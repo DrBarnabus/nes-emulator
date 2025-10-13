@@ -200,9 +200,14 @@ impl Apu {
     }
 
     pub fn output(&self) -> f32 {
-        let pulse_sum = self.pulse_1.output() + self.pulse_2.output();
+        let pulse_1 = self.pulse_1.output();
+        let pulse_2 = self.pulse_2.output();
+        let triangle = self.triangle.output();
 
-        (pulse_sum / 30.0) * 2.0 - 1.0
+        let pulse_out = (pulse_1 + pulse_2) * 0.5;
+        let tnd_out = triangle * 0.75;
+
+        (pulse_out + tnd_out) * 0.5
     }
 
     pub fn filtered_output(&mut self) -> f32 {

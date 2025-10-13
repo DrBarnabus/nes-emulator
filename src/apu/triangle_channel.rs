@@ -1,17 +1,34 @@
-﻿use crate::apu::LENGTH_TABLE;
+use crate::apu::LENGTH_TABLE;
+
+const TRIANGLE_SEQUENCE: [u8; 32] = [
+    15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+];
 
 pub struct TriangleChannel {
-    pub enabled: bool,
+    counter_halt: bool,
+    linear_reload: u8,
+    linear_counter: u8,
+    linear_reload_flag: bool,
+    timer_period: u16,
+    timer: u16,
     pub length_counter: u8,
-    length_counter_halt: bool,
+
+    pub enabled: bool,
+    sequence_position: u8,
 }
 
 impl TriangleChannel {
     pub fn new() -> Self {
         Self {
-            enabled: false,
+            counter_halt: false,
+            linear_reload: 0,
+            linear_counter: 0,
+            linear_reload_flag: false,
+            timer_period: 0,
+            timer: 0,
             length_counter: 0,
-            length_counter_halt: false,
+            enabled: false,
+            sequence_position: 0,
         }
     }
 
@@ -25,12 +42,13 @@ impl TriangleChannel {
 
     /// $4008
     pub fn write_control(&mut self, value: u8) {
-        self.length_counter_halt = value & 0x80 != 0;
+        self.counter_halt = value & 0x80 != 0;
+        self.linear_reload = value & 0x7F;
     }
 
     /// $400A
-    pub fn write_timer_low(&mut self, _value: u8) {
-        // TODO: Timer Low
+    pub fn write_timer_low(&mut self, value: u8) {
+        self.timer_period = (self.timer_period & 0x0700) | value as u16;
     }
 
     /// $400B
@@ -39,23 +57,51 @@ impl TriangleChannel {
         if self.enabled {
             self.length_counter = LENGTH_TABLE[length_index as usize];
         }
+
+        self.timer_period = (self.timer_period & 0x00FF) | ((value & 0x07) as u16) << 8;
+
+        self.linear_reload_flag = true;
     }
 
     /// Clock the timer (called at CPU rate)
     pub fn clock_timer(&mut self) {
-        // TODO: Implement timer
+        if self.timer == 0 {
+            self.timer = self.timer_period;
+
+            if self.length_counter > 0 && self.linear_counter > 0 {
+                self.sequence_position = (self.sequence_position + 1) & 0x1F;
+            }
+        } else {
+            self.timer -= 1;
+        }
     }
 
     /// Clock the linear counter (called at 240 Hz in 4-step, 192 Hz in 5-step)
     pub fn clock_linear_counter(&mut self) {
-        // TODO: Implement linear counter
+        if self.linear_reload_flag {
+            self.linear_counter = self.linear_reload;
+        } else if self.linear_counter > 0 {
+            self.linear_counter -= 1;
+        }
+
+        if !self.counter_halt {
+            self.linear_reload_flag = false;
+        }
     }
 
     /// Clock the length counter (called at 120 Hz in 4-step, 96 Hz in 5-step)
     pub fn clock_length_counter(&mut self) {
-        if !self.length_counter_halt && self.length_counter > 0 {
+        if !self.counter_halt && self.length_counter > 0 {
             self.length_counter -= 1;
         }
+    }
+
+    pub fn output(&self) -> f32 {
+        if self.timer_period < 2 {
+            return 0.0;
+        }
+
+        TRIANGLE_SEQUENCE[self.sequence_position as usize] as f32
     }
 }
 

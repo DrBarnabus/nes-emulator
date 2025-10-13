@@ -94,7 +94,7 @@ impl Emulator {
 
         // Tick APU for the CPU reset cycles (7 CPU cycles)
         for _ in 0..7 {
-            self.apu.borrow_mut().clock();
+            self.apu.borrow_mut().clock(|address| self.bus.borrow_mut().read(address));
         }
     }
 
@@ -119,7 +119,7 @@ impl Emulator {
 
             for _ in 0..cpu_cycles {
                 let mut apu = self.apu.borrow_mut();
-                apu.clock();
+                apu.clock(|address| self.bus.borrow_mut().read(address));
 
                 let apu_sample = apu.filtered_output();
                 if let Some(audio) = &mut self.audio {

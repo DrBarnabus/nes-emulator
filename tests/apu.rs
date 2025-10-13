@@ -102,7 +102,6 @@ fn app_irq_flag_timing() {
 }
 
 #[test]
-#[ignore = "The APU does not yet handle this properly"]
 fn apu_dmc_basics() {
     let mut emulator = load_test_rom("test_roms/apu_test/7-dmc_basics.nes");
     let (success, output) = run_test(&mut emulator);

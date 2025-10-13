@@ -104,10 +104,10 @@ impl Apu {
             0x400F => self.noise.write_length_load(value),
 
             // DMC Channel
-            0x4010 => {}
-            0x4011 => {}
-            0x4012 => {}
-            0x4013 => {}
+            0x4010 => self.dmc.write_flags(value),
+            0x4011 => self.dmc.write_direct_load(value),
+            0x4012 => self.dmc.write_sample_address(value),
+            0x4013 => self.dmc.write_sample_length(value),
 
             // Status
             0x4015 => self.write_status(value),
@@ -164,9 +164,14 @@ impl Apu {
         self.triangle.set_enabled(value & 0x04 != 0);
         self.noise.set_enabled(value & 0x08 != 0);
         self.dmc.set_enabled(value & 0x10 != 0);
+
+        self.dmc.clear_interrupt()
     }
 
-    pub fn clock(&mut self) {
+    pub fn clock<F>(&mut self, read_memory: F)
+    where
+        F: FnMut(u16) -> u8,
+    {
         let signals = self.frame_counter.clock();
 
         if signals.clock_envelopes {
@@ -194,7 +199,9 @@ impl Apu {
         }
 
         self.triangle.clock_timer();
-        self.dmc.clock_timer();
+        self.dmc.clock_timer(read_memory);
+
+        self.dmc_irq = self.dmc.get_interrupt();
 
         self.cycle += 1;
     }
@@ -204,9 +211,10 @@ impl Apu {
         let pulse_2 = self.pulse_2.output();
         let triangle = self.triangle.output();
         let noise = self.noise.output();
+        let dmc = self.dmc.output();
 
         let pulse_out = (pulse_1 + pulse_2) * 0.5;
-        let tnd_out = (triangle * 0.75 + noise * 0.5) * 0.5;
+        let tnd_out = (triangle * 0.75 + noise * 0.5 + dmc * 0.85) * 0.5;
 
         (pulse_out + tnd_out) * 0.5
     }

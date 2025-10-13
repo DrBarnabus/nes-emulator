@@ -140,21 +140,21 @@ impl PulseChannel {
         }
     }
 
-    pub fn output(&self) -> f32 {
+    pub fn raw_output(&self) -> u8 {
         if !self.enabled || self.length_counter == 0 {
-            return 0.0;
+            return 0;
         }
 
         if self.timer_period < 8 || self.sweep_unit.is_muting() {
-            return 0.0;
+            return 0;
         }
 
         let duty_cycle = DUTY_CYCLES[self.duty_cycle as usize][self.duty_position as usize];
         if duty_cycle == 0 {
-            return 0.0;
+            return 0;
         }
 
-        self.envelope.get_volume() as f32
+        self.envelope.get_volume()
     }
 }
 

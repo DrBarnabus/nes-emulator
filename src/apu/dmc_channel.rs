@@ -169,12 +169,12 @@ impl DmcChannel {
         self.bits_remaining -= 1;
     }
 
-    pub fn output(&self) -> f32 {
+    pub fn output(&self) -> u8 {
         if !self.enabled {
-            return 0.0;
+            return 0;
         }
 
-        (self.output_level as f32 / 63.5) - 1.0
+        self.output_level
     }
 
     pub fn get_interrupt(&self) -> bool {

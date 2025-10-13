@@ -99,16 +99,16 @@ impl NoiseChannel {
         }
     }
 
-    pub fn output(&self) -> f32 {
+    pub fn raw_output(&self) -> u8 {
         if !self.enabled || self.length_counter == 0 {
-            return 0.0;
+            return 0;
         }
 
         if (self.shift_register & 1) == 1 {
-            return 0.0;
+            return 0;
         }
 
-        self.envelope.get_volume() as f32 / 15.0
+        self.envelope.get_volume()
     }
 }
 

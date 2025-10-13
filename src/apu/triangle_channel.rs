@@ -96,12 +96,12 @@ impl TriangleChannel {
         }
     }
 
-    pub fn output(&self) -> f32 {
+    pub fn raw_output(&self) -> u8 {
         if self.timer_period < 2 {
-            return 0.0;
+            return 0;
         }
 
-        TRIANGLE_SEQUENCE[self.sequence_position as usize] as f32
+        TRIANGLE_SEQUENCE[self.sequence_position as usize]
     }
 }
 

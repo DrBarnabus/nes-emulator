@@ -1,3 +1,4 @@
+mod audio_output;
 mod dmc_channel;
 mod envelope;
 mod frame_counter;
@@ -5,6 +6,8 @@ mod noise_channel;
 mod pulse_channel;
 mod triangle_channel;
 
+use crate::emulator::NTSC_CPU_FREQUENCY;
+use audio_output::*;
 use dmc_channel::*;
 use frame_counter::*;
 use noise_channel::*;
@@ -27,15 +30,11 @@ pub struct Apu {
     frame_irq: bool,
     dmc_irq: bool,
 
-    // Audio processing
-    high_pass: HighPassFilter,
-    low_pass: LowPassFilter,
+    audio_processor: AudioProcessor,
 }
 
-impl Apu {
-    pub fn new() -> Self {
-        const NTSC_CPU_FREQUENCY: f32 = 1_789_773.0; // APU runs at CPU clock rate
-
+impl Default for Apu {
+    fn default() -> Self {
         Self {
             pulse_1: PulseChannel::default(),
             pulse_2: PulseChannel::default(),
@@ -48,11 +47,12 @@ impl Apu {
             frame_irq: false,
             dmc_irq: false,
 
-            high_pass: HighPassFilter::new(90.0, NTSC_CPU_FREQUENCY),
-            low_pass: LowPassFilter::new(14000.0, NTSC_CPU_FREQUENCY),
+            audio_processor: AudioProcessor::new(NTSC_CPU_FREQUENCY as f32),
         }
     }
+}
 
+impl Apu {
     pub fn cpu_read(&mut self, address: u16) -> u8 {
         match address {
             // Pulse Channel 1
@@ -206,92 +206,17 @@ impl Apu {
         self.cycle += 1;
     }
 
-    pub fn output(&self) -> f32 {
-        let pulse_1 = self.pulse_1.output();
-        let pulse_2 = self.pulse_2.output();
-        let triangle = self.triangle.output();
-        let noise = self.noise.output();
+    pub fn output(&mut self) -> f32 {
+        let pulse_1 = self.pulse_1.raw_output();
+        let pulse_2 = self.pulse_2.raw_output();
+        let triangle = self.triangle.raw_output();
+        let noise = self.noise.raw_output();
         let dmc = self.dmc.output();
 
-        let pulse_out = (pulse_1 + pulse_2) * 0.5;
-        let tnd_out = (triangle * 0.75 + noise * 0.5 + dmc * 0.85) * 0.5;
-
-        (pulse_out + tnd_out) * 0.5
-    }
-
-    pub fn filtered_output(&mut self) -> f32 {
-        let raw = self.output();
-
-        let high_passed = self.high_pass.process(raw);
-        self.low_pass.process(high_passed)
+        self.audio_processor.process(pulse_1, pulse_2, triangle, noise, dmc)
     }
 
     pub fn irq_pending(&mut self) -> bool {
         self.frame_irq || self.dmc_irq
-    }
-}
-
-impl Default for Apu {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-pub struct HighPassFilter {
-    alpha: f32,
-    previous_input: f32,
-    previous_output: f32,
-}
-
-impl HighPassFilter {
-    pub fn new(cutoff_frequency: f32, sample_rate: f32) -> Self {
-        let rc = 1.0 / (2.0 * std::f32::consts::PI * cutoff_frequency);
-        let dt = 1.0 / sample_rate;
-        let alpha = rc / (rc + dt);
-
-        Self {
-            alpha,
-            previous_input: 0.0,
-            previous_output: 0.0,
-        }
-    }
-
-    pub fn process(&mut self, input: f32) -> f32 {
-        let output = self.alpha * (self.previous_output + input - self.previous_input);
-        self.previous_input = input;
-        self.previous_output = output;
-
-        output
-    }
-
-    pub fn reset(&mut self) {
-        self.previous_input = 0.0;
-        self.previous_output = 0.0;
-    }
-}
-
-pub struct LowPassFilter {
-    alpha: f32,
-    previous_output: f32,
-}
-
-impl LowPassFilter {
-    pub fn new(cutoff_frequency: f32, sample_rate: f32) -> Self {
-        let rc = 1.0 / (2.0 * std::f32::consts::PI * cutoff_frequency);
-        let dt = 1.0 / sample_rate;
-        let alpha = dt / (rc + dt);
-
-        Self { alpha, previous_output: 0.0 }
-    }
-
-    pub fn process(&mut self, input: f32) -> f32 {
-        let output = self.alpha * input + (1.0 - self.alpha) * self.previous_output;
-        self.previous_output = output;
-
-        output
-    }
-
-    pub fn reset(&mut self) {
-        self.previous_output = 0.0;
     }
 }

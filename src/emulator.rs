@@ -66,7 +66,7 @@ impl Emulator {
     pub fn new(cartridge: Cartridge) -> Self {
         let cartridge = Rc::new(RefCell::new(cartridge));
         let ppu = Rc::new(RefCell::new(Ppu::new(Rc::clone(&cartridge))));
-        let apu = Rc::new(RefCell::new(Apu::new()));
+        let apu = Rc::new(RefCell::new(Apu::default()));
         let bus = Rc::new(RefCell::new(Bus::new(Rc::clone(&ppu), Rc::clone(&apu), Rc::clone(&cartridge))));
         let cpu = Cpu::new(Rc::clone(&bus));
 
@@ -121,7 +121,7 @@ impl Emulator {
                 let mut apu = self.apu.borrow_mut();
                 apu.clock(|address| self.bus.borrow_mut().read(address));
 
-                let apu_sample = apu.filtered_output();
+                let apu_sample = apu.output();
                 if let Some(audio) = &mut self.audio {
                     audio.push_source_sample(apu_sample);
                 }

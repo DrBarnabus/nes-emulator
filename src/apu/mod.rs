@@ -100,8 +100,8 @@ impl Apu {
             // Noise Channel
             0x400C => self.noise.write_control(value),
             0x400D => { /* Unused */ }
-            0x400E => self.noise.write_timer_low(value),
-            0x400F => self.noise.write_timer_high(value),
+            0x400E => self.noise.write_period(value),
+            0x400F => self.noise.write_length_load(value),
 
             // DMC Channel
             0x4010 => {}
@@ -203,9 +203,10 @@ impl Apu {
         let pulse_1 = self.pulse_1.output();
         let pulse_2 = self.pulse_2.output();
         let triangle = self.triangle.output();
+        let noise = self.noise.output();
 
         let pulse_out = (pulse_1 + pulse_2) * 0.5;
-        let tnd_out = triangle * 0.75;
+        let tnd_out = (triangle * 0.75 + noise * 0.5) * 0.5;
 
         (pulse_out + tnd_out) * 0.5
     }

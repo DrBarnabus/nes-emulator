@@ -9,6 +9,7 @@ pub mod cpu;
 pub mod emulator;
 pub mod ppu;
 
+use crate::audio::AudioOutput;
 use anyhow::{Context as _, Result};
 use cartridge::Cartridge;
 use clap::Parser;
@@ -137,33 +138,33 @@ fn main() -> Result<()> {
     let mut frame = Frame::new();
 
     let cartridge = Cartridge::load(args.rom.as_str()).context("Failed to load ROM file into Cartridge")?;
-    let mut emulator = Emulator::new(cartridge).context("Failed to create emulator")?;
-    emulator.run(
-        |_cpu| {
-            // Per-instruction callback, which can be used for debugging/tracing
-        },
-        |cpu| {
-            let mut should_exit = false;
+    let mut emulator = Emulator::new(cartridge);
 
-            #[allow(deprecated)]
-            event_loop.pump_events(Some(Duration::ZERO), |event, _window_target| {
-                imgui_platform.handle_event(imgui_context.io_mut(), &window, &event);
+    let audio = AudioOutput::new(emulator::NTSC_CPU_FREQUENCY, true).context("Failed to create audio output")?;
+    emulator.connect_audio(audio);
 
-                if let Event::WindowEvent { event: window_event, .. } = event {
-                    match window_event {
-                        WindowEvent::CloseRequested => should_exit = true,
-                        WindowEvent::KeyboardInput { event: key_event, .. } => {
-                            if let PhysicalKey::Code(keycode) = key_event.physical_key {
-                                let is_pressed = key_event.state == ElementState::Pressed;
+    emulator.run(|cpu| {
+        let mut should_exit = false;
 
-                                if is_pressed {
-                                    match keycode {
-                                        KeyCode::Escape => should_exit = true,
-                                        KeyCode::F12 => debug_visible = !debug_visible,
-                                        KeyCode::KeyP => active_palette = (active_palette + 1) & 0x07,
-                                        _ => {}
-                                    }
+        #[allow(deprecated)]
+        event_loop.pump_events(Some(Duration::ZERO), |event, _window_target| {
+            imgui_platform.handle_event(imgui_context.io_mut(), &window, &event);
+
+            if let Event::WindowEvent { event: window_event, .. } = event {
+                match window_event {
+                    WindowEvent::CloseRequested => should_exit = true,
+                    WindowEvent::KeyboardInput { event: key_event, .. } => {
+                        if let PhysicalKey::Code(keycode) = key_event.physical_key {
+                            let is_pressed = key_event.state == ElementState::Pressed;
+
+                            if is_pressed {
+                                match keycode {
+                                    KeyCode::Escape => should_exit = true,
+                                    KeyCode::F12 => debug_visible = !debug_visible,
+                                    KeyCode::KeyP => active_palette = (active_palette + 1) & 0x07,
+                                    _ => {}
                                 }
+                            }
 
                                 if let Some(button) = KEY_MAP.get(&keycode) {
                                     cpu.bus.borrow_mut().controller_1.set_button_state(*button, is_pressed)
@@ -183,170 +184,171 @@ fn main() -> Result<()> {
                 }
             });
 
-            if should_exit {
-                std::process::exit(0);
+        if should_exit {
+            std::process::exit(0);
+        }
+
+        imgui_platform.prepare_frame(imgui_context.io_mut(), &window).unwrap();
+        let ui = imgui_context.frame();
+
+        let [display_width, display_height] = ui.io().display_size;
+        let emulator_width = if debug_visible { display_width * 0.67 } else { display_width };
+
+        let mut rendered_width = 0.0;
+        let mut rendered_height = 0.0;
+
+        {
+            let _padding_token = ui.push_style_var(imgui::StyleVar::WindowPadding([0.0, 0.0]));
+            ui.window("##output")
+                .position([0.0, 0.0], Condition::Always)
+                .size([emulator_width, display_height], Condition::Always)
+                .movable(false)
+                .resizable(false)
+                .collapsible(false)
+                .title_bar(false)
+                .menu_bar(false)
+                .scrollable(false)
+                .scroll_bar(false)
+                .draw_background(true)
+                .build(|| {
+                    let content_region = ui.content_region_avail();
+
+                    let mut display_width = content_region[0];
+                    let mut display_height = display_width / NES_ASPECT_RATIO;
+
+                    if display_height > content_region[1] {
+                        display_height = content_region[1];
+                        display_width = display_height * NES_ASPECT_RATIO;
+                    }
+
+                    let offset_x = (content_region[0] - display_width) * 0.5;
+                    let offset_y = (content_region[1] - display_height) * 0.5;
+
+                    let cursor_pos = ui.cursor_screen_pos();
+                    ui.set_cursor_screen_pos([cursor_pos[0] + offset_x, cursor_pos[1] + offset_y]);
+
+                    let texture_id = imgui::TextureId::new(nes_texture.0.get() as usize);
+                    imgui::Image::new(texture_id, [display_width, display_height]).build(ui);
+
+                    rendered_width = display_width;
+                    rendered_height = display_height;
+                });
+        }
+
+        if debug_visible {
+            let debug_width = display_width - emulator_width;
+
+            ui.window("##debug")
+                .position([emulator_width, 0.0], Condition::Always)
+                .size([debug_width, display_height], Condition::Always)
+                .movable(false)
+                .resizable(false)
+                .collapsible(false)
+                .title_bar(false)
+                .build(|| {
+                    ui.text(format!("Audio Test Result: {:02X}", cpu.read(0x6000)));
+
+                    ui.text(format!("{:02X}, {:02X}, {:02X}", cpu.read(0x6001), cpu.read(0x6002), cpu.read(0x6003)));
+
+                    let mut output_str = String::new();
+                    for address in 0x6004..=0x6FFF {
+                        let byte = cpu.read(address);
+                        if byte == 0 {
+                            break;
+                        }
+
+                        output_str.push(byte as char);
+                    }
+
+                    ui.text_wrapped(format!("Audio Test Output: {}", output_str));
+
+                    if ui.collapsing_header("Display", imgui::TreeNodeFlags::DEFAULT_OPEN) {
+                        ui.text(format!("Window: {}×{}", display_width, display_height));
+                        ui.text(format!(
+                            "Game Area: {}×{} ({:.2}x)",
+                            rendered_width as u32,
+                            rendered_height as u32,
+                            rendered_width / NES_WIDTH as f32
+                        ));
+                    }
+
+                    if ui.collapsing_header("Performance", imgui::TreeNodeFlags::DEFAULT_OPEN) {
+                        ui.text(format!("FPS: {:.1}", ui.io().framerate));
+                        ui.text(format!("Frame time: {:.3}ms", ui.io().delta_time * 1000.0));
+                    }
+
+                    if ui.collapsing_header("Input", imgui::TreeNodeFlags::DEFAULT_OPEN) {
+                        text_bitflags_long(
+                            ui,
+                            "Controller 1",
+                            ["R", "L", "D", "U", "START", "SELECT", "B", "A"],
+                            cpu.bus.borrow().controller_1.button_states.bits(),
+                        );
+                    }
+
+                    if ui.collapsing_header("CPU Debug", imgui::TreeNodeFlags::DEFAULT_OPEN) {
+                        ui.text(format!("Cycle: {}", cpu.cycles));
+                        ui.text(format!("PC: ${:04X}", cpu.pc));
+                        ui.text(format!("SP: ${:02X} ({})", cpu.sp, cpu.sp));
+                        ui.text(format!("A: ${:02X} ({})", cpu.a, cpu.a));
+                        ui.text(format!("X: ${:02X} ({})", cpu.x, cpu.x));
+                        ui.text(format!("Y: ${:02X} ({})", cpu.y, cpu.y));
+                        text_bitflags(ui, "STATUS", "NV-BDIZC", cpu.status.bits());
+                    }
+
+                    if ui.collapsing_header("PPU Debug", imgui::TreeNodeFlags::DEFAULT_OPEN) {
+                        let cpu = cpu.bus.borrow_mut();
+                        let ppu = cpu.ppu.borrow_mut();
+                        ui.text(format!("Cycle: {}", ppu.cycle));
+                        ui.text(format!("Scanline: {}", ppu.scanline));
+                        ui.text(format!("Frame: {}", ppu.frame));
+
+                        ui.separator();
+
+                        text_bitflags(ui, "CTRL", "VPHBSINN", ppu.ctrl.bits());
+                        text_bitflags(ui, "MASK", "BGRsbMmG", ppu.mask.bits());
+                        text_bitflags(ui, "STATUS", "VSO-----", ppu.status.bits());
+                        ui.text(format!("SCROLL: {:02X} {:02X}", ppu.render_scroll_x, ppu.render_scroll_y));
+                        ui.text(format!("ADDR: {:04X}", ppu.addr.get()));
+
+                        ui.separator();
+
+                        ui.text("Palettes:");
+                        draw_palettes(ui, palette_texture, active_palette);
+
+                        ui.text("Pattern Tables:");
+                        draw_pattern_table(ui, pattern_table_textures[0], 128.0 * 2.5);
+                        draw_pattern_table(ui, pattern_table_textures[1], 128.0 * 2.5);
+                    }
+                });
+        }
+
+        let gl = imgui_renderer.gl_context();
+        unsafe {
+            gl.clear_color(0.0, 0.0, 0.0, 1.0);
+            gl.clear(glow::COLOR_BUFFER_BIT);
+        }
+
+        let cpu = cpu.bus.borrow_mut();
+        let ppu = cpu.ppu.borrow_mut();
+        ppu::render::render(&ppu, &mut frame);
+        update_rgb_texture(gl, nes_texture, NES_WIDTH as i32, NES_HEIGHT as i32, &frame.data);
+
+        if debug_visible {
+            let palette_data = populate_palette_texture(&ppu.palette_table);
+            update_rgb_texture(gl, palette_texture, 8, 4, &palette_data);
+
+            for (i, pattern_table_texture) in pattern_table_textures.iter().enumerate() {
+                let pattern_table_data = populate_pattern_table_texture(i, &ppu.cartridge.borrow_mut().chr_rom, &ppu.palette_table, active_palette);
+                update_rgb_texture(gl, *pattern_table_texture, 128, 128, &pattern_table_data);
             }
+        }
 
-            imgui_platform.prepare_frame(imgui_context.io_mut(), &window).unwrap();
-            let ui = imgui_context.frame();
+        let draw_data = imgui_context.render();
+        imgui_renderer.render(draw_data).unwrap();
 
-            let [display_width, display_height] = ui.io().display_size;
-            let emulator_width = if debug_visible { display_width * 0.67 } else { display_width };
-
-            let mut rendered_width = 0.0;
-            let mut rendered_height = 0.0;
-
-            {
-                let _padding_token = ui.push_style_var(imgui::StyleVar::WindowPadding([0.0, 0.0]));
-                ui.window("##output")
-                    .position([0.0, 0.0], Condition::Always)
-                    .size([emulator_width, display_height], Condition::Always)
-                    .movable(false)
-                    .resizable(false)
-                    .collapsible(false)
-                    .title_bar(false)
-                    .menu_bar(false)
-                    .scrollable(false)
-                    .scroll_bar(false)
-                    .draw_background(true)
-                    .build(|| {
-                        let content_region = ui.content_region_avail();
-
-                        let mut display_width = content_region[0];
-                        let mut display_height = display_width / NES_ASPECT_RATIO;
-
-                        if display_height > content_region[1] {
-                            display_height = content_region[1];
-                            display_width = display_height * NES_ASPECT_RATIO;
-                        }
-
-                        let offset_x = (content_region[0] - display_width) * 0.5;
-                        let offset_y = (content_region[1] - display_height) * 0.5;
-
-                        let cursor_pos = ui.cursor_screen_pos();
-                        ui.set_cursor_screen_pos([cursor_pos[0] + offset_x, cursor_pos[1] + offset_y]);
-
-                        let texture_id = imgui::TextureId::new(nes_texture.0.get() as usize);
-                        imgui::Image::new(texture_id, [display_width, display_height]).build(ui);
-
-                        rendered_width = display_width;
-                        rendered_height = display_height;
-                    });
-            }
-
-            if debug_visible {
-                let debug_width = display_width - emulator_width;
-
-                ui.window("##debug")
-                    .position([emulator_width, 0.0], Condition::Always)
-                    .size([debug_width, display_height], Condition::Always)
-                    .movable(false)
-                    .resizable(false)
-                    .collapsible(false)
-                    .title_bar(false)
-                    .build(|| {
-                        ui.text(format!("Audio Test Result: {:02X}", cpu.read(0x6000)));
-
-                        let mut output_str = String::new();
-                        for address in 0x6004..=0x6FFF {
-                            let byte = cpu.read(address);
-                            if byte == 0 {
-                                break;
-                            }
-
-                            output_str.push(byte as char);
-                        }
-
-                        ui.text_wrapped(format!("Audio Test Output: {}", output_str));
-
-                        if ui.collapsing_header("Display", imgui::TreeNodeFlags::DEFAULT_OPEN) {
-                            ui.text(format!("Window: {}×{}", display_width, display_height));
-                            ui.text(format!(
-                                "Game Area: {}×{} ({:.2}x)",
-                                rendered_width as u32,
-                                rendered_height as u32,
-                                rendered_width / NES_WIDTH as f32
-                            ));
-                        }
-
-                        if ui.collapsing_header("Performance", imgui::TreeNodeFlags::DEFAULT_OPEN) {
-                            ui.text(format!("FPS: {:.1}", ui.io().framerate));
-                            ui.text(format!("Frame time: {:.3}ms", ui.io().delta_time * 1000.0));
-                        }
-
-                        if ui.collapsing_header("Input", imgui::TreeNodeFlags::DEFAULT_OPEN) {
-                            text_bitflags_long(
-                                ui,
-                                "Controller 1",
-                                ["R", "L", "D", "U", "START", "SELECT", "B", "A"],
-                                cpu.bus.borrow().controller_1.button_states.bits(),
-                            );
-                        }
-
-                        if ui.collapsing_header("CPU Debug", imgui::TreeNodeFlags::DEFAULT_OPEN) {
-                            ui.text(format!("Cycle: {}", cpu.cycles));
-                            ui.text(format!("PC: ${:04X}", cpu.pc));
-                            ui.text(format!("SP: ${:02X} ({})", cpu.sp, cpu.sp));
-                            ui.text(format!("A: ${:02X} ({})", cpu.a, cpu.a));
-                            ui.text(format!("X: ${:02X} ({})", cpu.x, cpu.x));
-                            ui.text(format!("Y: ${:02X} ({})", cpu.y, cpu.y));
-                            text_bitflags(ui, "STATUS", "NV-BDIZC", cpu.status.bits());
-                        }
-
-                        if ui.collapsing_header("PPU Debug", imgui::TreeNodeFlags::DEFAULT_OPEN) {
-                            let cpu = cpu.bus.borrow_mut();
-                            let ppu = cpu.ppu.borrow_mut();
-                            ui.text(format!("Cycle: {}", ppu.cycle));
-                            ui.text(format!("Scanline: {}", ppu.scanline));
-                            ui.text(format!("Frame: {}", ppu.frame));
-
-                            ui.separator();
-
-                            text_bitflags(ui, "CTRL", "VPHBSINN", ppu.ctrl.bits());
-                            text_bitflags(ui, "MASK", "BGRsbMmG", ppu.mask.bits());
-                            text_bitflags(ui, "STATUS", "VSO-----", ppu.status.bits());
-                            ui.text(format!("SCROLL: {:02X} {:02X}", ppu.render_scroll_x, ppu.render_scroll_y));
-                            ui.text(format!("ADDR: {:04X}", ppu.addr.get()));
-
-                            ui.separator();
-
-                            ui.text("Palettes:");
-                            draw_palettes(ui, palette_texture, active_palette);
-
-                            ui.text("Pattern Tables:");
-                            draw_pattern_table(ui, pattern_table_textures[0], 128.0 * 2.5);
-                            draw_pattern_table(ui, pattern_table_textures[1], 128.0 * 2.5);
-                        }
-                    });
-            }
-
-            let gl = imgui_renderer.gl_context();
-            unsafe {
-                gl.clear_color(0.0, 0.0, 0.0, 1.0);
-                gl.clear(glow::COLOR_BUFFER_BIT);
-            }
-
-            let cpu = cpu.bus.borrow_mut();
-            let ppu = cpu.ppu.borrow_mut();
-            ppu::render::render(&ppu, &mut frame);
-            update_rgb_texture(gl, nes_texture, NES_WIDTH as i32, NES_HEIGHT as i32, &frame.data);
-
-            if debug_visible {
-                let palette_data = populate_palette_texture(&ppu.palette_table);
-                update_rgb_texture(gl, palette_texture, 8, 4, &palette_data);
-
-                for (i, pattern_table_texture) in pattern_table_textures.iter().enumerate() {
-                    let pattern_table_data = populate_pattern_table_texture(i, &ppu.cartridge.borrow_mut().chr_rom, &ppu.palette_table, active_palette);
-                    update_rgb_texture(gl, *pattern_table_texture, 128, 128, &pattern_table_data);
-                }
-            }
-
-            let draw_data = imgui_context.render();
-            imgui_renderer.render(draw_data).unwrap();
-
-            surface.swap_buffers(&gl_context).unwrap();
-        },
-    );
+        surface.swap_buffers(&gl_context).unwrap();
+    });
 
     Ok(())
 }

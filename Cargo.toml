@@ -4,9 +4,21 @@ version = "0.1.0"
 edition = "2024"
 default-run = "nes-emulator"
 
+[lib]
+name = "nes_emulator"
+path = "src/lib.rs"
+
+[[bin]]
+name = "nes-emulator"
+path = "src/main.rs"
+
 [[bin]]
 name = "nestest"
 path = "src/nestest.rs"
+
+[[test]]
+name = "apu"
+path = "tests/apu.rs"
 
 [dependencies]
 bitflags = "2.9.4"

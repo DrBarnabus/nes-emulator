@@ -46,25 +46,29 @@ impl FrameCounter {
         if self.write_delay_counter > 0 {
             self.write_delay_counter -= 1;
 
-            if self.write_delay_counter == 0 {
-                if let Some(value) = self.pending_write {
-                    let new_mode = if value & 0x80 != 0 { FrameCounterMode::FiveStep } else { FrameCounterMode::FourStep };
+            if self.write_delay_counter == 0
+                && let Some(value) = self.pending_write
+            {
+                let new_mode = if value & 0x80 != 0 {
+                    FrameCounterMode::FiveStep
+                } else {
+                    FrameCounterMode::FourStep
+                };
 
-                    self.irq_inhibit = value & 0x40 != 0;
-                    if self.irq_inhibit {
-                        self.irq_flag = false;
-                    }
-
-                    self.cycle_counter = 0;
-                    self.mode = new_mode;
-
-                    if new_mode == FrameCounterMode::FiveStep {
-                        signals.clock_envelopes = true;
-                        signals.clock_length = true;
-                    }
-
-                    self.pending_write = None;
+                self.irq_inhibit = value & 0x40 != 0;
+                if self.irq_inhibit {
+                    self.irq_flag = false;
                 }
+
+                self.cycle_counter = 0;
+                self.mode = new_mode;
+
+                if new_mode == FrameCounterMode::FiveStep {
+                    signals.clock_envelopes = true;
+                    signals.clock_length = true;
+                }
+
+                self.pending_write = None;
             }
         }
 
@@ -77,45 +81,6 @@ impl FrameCounter {
 
         signals.irq = self.irq_flag && !self.irq_inhibit;
 
-        let apu_cycle = self.cycle_counter / 2;
-        let get_cycle = self.cycle_counter % 2 == 0;
-
-        let interesting_cycle = match self.mode {
-            FrameCounterMode::FourStep => {
-                match (apu_cycle, get_cycle) {
-                    (3728, false) => true,
-                    (7456, false) => true,
-                    (11185, false) => true,
-                    (14914, true) => true,
-                    (14914, false) => true,
-                    (0, true) => true,
-                    _ => false,
-                }
-            },
-            FrameCounterMode::FiveStep => {
-                match (apu_cycle, get_cycle) {
-                    (3728, false) => true,
-                    (7456, false) => true,
-                    (11185, false) => true,
-                    (14914, false) => true,
-                    (18640, false) => true,
-                    (0, true) => true,
-                    _ => false,
-                }
-            }
-        };
-
-        if interesting_cycle {
-            println!("APU Debug: {:?}, {}, {} ({}), {}, {}, {}",
-                     self.mode,
-                     self.cycle_counter,
-                     apu_cycle,
-                     if get_cycle { "get" } else { "put" },
-                     signals.clock_envelopes,
-                     signals.clock_length,
-                     signals.irq);
-        }
-
         signals
     }
 
@@ -123,19 +88,19 @@ impl FrameCounter {
         match self.cycle_counter {
             7457 => {
                 signals.clock_envelopes = true;
-            },
+            }
             14913 => {
                 signals.clock_envelopes = true;
                 signals.clock_length = true;
-            },
+            }
             22371 => {
                 signals.clock_envelopes = true;
-            },
+            }
             29828 => {
                 if !self.irq_inhibit {
                     self.irq_flag = true;
                 }
-            },
+            }
             29829 => {
                 signals.clock_envelopes = true;
                 signals.clock_length = true;
@@ -143,11 +108,11 @@ impl FrameCounter {
                 if !self.irq_inhibit {
                     self.irq_flag = true;
                 }
-            },
+            }
             29830 => {
                 self.cycle_counter = 0;
             }
-            _ => {},
+            _ => {}
         }
     }
 
@@ -155,15 +120,15 @@ impl FrameCounter {
         match self.cycle_counter {
             7457 => {
                 signals.clock_envelopes = true;
-            },
+            }
             14913 => {
                 signals.clock_envelopes = true;
                 signals.clock_length = true;
-            },
+            }
             22371 => {
                 signals.clock_envelopes = true;
-            },
-            29829 => {},
+            }
+            29829 => {}
             37281 => {
                 signals.clock_envelopes = true;
                 signals.clock_length = true;
@@ -171,7 +136,7 @@ impl FrameCounter {
             37282 => {
                 self.cycle_counter = 0;
             }
-            _ => {},
+            _ => {}
         }
     }
 }

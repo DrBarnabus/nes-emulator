@@ -1,15 +1,15 @@
-mod frame_counter;
-mod pulse_channel;
-mod envelope;
-mod triangle_channel;
-mod noise_channel;
 mod dmc_channel;
+mod envelope;
+mod frame_counter;
+mod noise_channel;
+mod pulse_channel;
+mod triangle_channel;
 
+use dmc_channel::*;
 use frame_counter::*;
+use noise_channel::*;
 use pulse_channel::*;
 use triangle_channel::*;
-use noise_channel::*;
-use dmc_channel::*;
 
 pub const LENGTH_TABLE: [u8; 32] = [
     10, 254, 20, 2, 40, 4, 80, 6, 160, 8, 60, 10, 14, 12, 26, 14, 12, 16, 24, 18, 48, 20, 96, 22, 192, 24, 72, 26, 16, 28, 32, 30,
@@ -115,7 +115,7 @@ impl Apu {
             // Frame Counter
             0x4017 => {
                 self.frame_counter.write(value);
-            },
+            }
 
             _ => unreachable!(),
         }

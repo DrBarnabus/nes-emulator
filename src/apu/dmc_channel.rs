@@ -1,4 +1,4 @@
-﻿pub struct DmcChannel {
+pub struct DmcChannel {
     pub enabled: bool,
     pub bytes_remaining: u16,
 }
@@ -28,5 +28,5 @@ impl DmcChannel {
 impl Default for DmcChannel {
     fn default() -> Self {
         Self::new()
-    }   
+    }
 }

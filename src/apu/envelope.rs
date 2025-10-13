@@ -1,10 +1,10 @@
-﻿pub struct Envelope {
+pub struct Envelope {
     pub start: bool,
     decay_level: u8,
     divider: u8,
 
     constant_volume: bool,
-    constant_volume_value: u8
+    constant_volume_value: u8,
 }
 
 impl Envelope {
@@ -41,11 +41,7 @@ impl Envelope {
     }
 
     pub fn get_volume(&self) -> u8 {
-        if self.constant_volume {
-            self.constant_volume_value
-        } else {
-            self.decay_level
-        }
+        if self.constant_volume { self.constant_volume_value } else { self.decay_level }
     }
 }
 

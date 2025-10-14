@@ -39,8 +39,8 @@ const NES_WIDTH: u32 = 256;
 const NES_HEIGHT: u32 = 240;
 const NES_ASPECT_RATIO: f32 = NES_WIDTH as f32 / NES_HEIGHT as f32;
 
-const DEFAULT_WINDOW_WIDTH: u32 = NES_WIDTH * 3;
-const DEFAULT_WINDOW_HEIGHT: u32 = NES_HEIGHT * 3;
+const DEFAULT_WINDOW_WIDTH: u32 = NES_WIDTH * 4;
+const DEFAULT_WINDOW_HEIGHT: u32 = NES_HEIGHT * 4;
 
 #[derive(Parser, Debug)]
 struct Args {
@@ -110,7 +110,7 @@ fn imgui_init(window: &Window) -> (WinitPlatform, Context) {
     platform.attach_window(context.io_mut(), window, HiDpiMode::Rounded);
 
     context.fonts().add_font(&[FontSource::DefaultFontData { config: None }]);
-    context.io_mut().font_global_scale = (1.0 / platform.hidpi_factor()) as f32;
+    context.io_mut().font_global_scale = window.scale_factor() as f32;
 
     (platform, context)
 }
@@ -174,6 +174,9 @@ fn main() -> Result<()> {
                             NonZeroU32::new(physical_size.width).unwrap(),
                             NonZeroU32::new(physical_size.height).unwrap(),
                         ),
+                        WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
+                            imgui_context.io_mut().font_global_scale = scale_factor as f32;
+                        }
                         _ => {}
                     }
                 }

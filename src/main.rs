@@ -6,11 +6,12 @@ pub mod bus;
 pub mod cartridge;
 pub mod controller;
 pub mod cpu;
+pub mod debug;
 pub mod emulator;
 pub mod ppu;
 
-use crate::audio::AudioOutput;
 use anyhow::{Context as _, Result};
+use audio::AudioOutput;
 use cartridge::Cartridge;
 use clap::Parser;
 use controller::ControllerButton;
@@ -143,7 +144,7 @@ fn main() -> Result<()> {
     let audio = AudioOutput::new(emulator::NTSC_CPU_FREQUENCY, true).context("Failed to create audio output")?;
     emulator.connect_audio(audio);
 
-    emulator.run(|cpu| {
+    emulator.run(|emulator| {
         let mut should_exit = false;
 
         #[allow(deprecated)]
@@ -167,7 +168,7 @@ fn main() -> Result<()> {
                             }
 
                                 if let Some(button) = KEY_MAP.get(&keycode) {
-                                    cpu.bus.borrow_mut().controller_1.set_button_state(*button, is_pressed)
+                                    emulator.cpu.bus.borrow_mut().controller_1.set_button_state(*button, is_pressed)
                                 }
                             }
                         }
@@ -246,22 +247,6 @@ fn main() -> Result<()> {
                 .collapsible(false)
                 .title_bar(false)
                 .build(|| {
-                    ui.text(format!("Audio Test Result: {:02X}", cpu.read(0x6000)));
-
-                    ui.text(format!("{:02X}, {:02X}, {:02X}", cpu.read(0x6001), cpu.read(0x6002), cpu.read(0x6003)));
-
-                    let mut output_str = String::new();
-                    for address in 0x6004..=0x6FFF {
-                        let byte = cpu.read(address);
-                        if byte == 0 {
-                            break;
-                        }
-
-                        output_str.push(byte as char);
-                    }
-
-                    ui.text_wrapped(format!("Audio Test Output: {}", output_str));
-
                     if ui.collapsing_header("Display", imgui::TreeNodeFlags::DEFAULT_OPEN) {
                         ui.text(format!("Window: {}×{}", display_width, display_height));
                         ui.text(format!(
@@ -282,23 +267,23 @@ fn main() -> Result<()> {
                             ui,
                             "Controller 1",
                             ["R", "L", "D", "U", "START", "SELECT", "B", "A"],
-                            cpu.bus.borrow().controller_1.button_states.bits(),
+                            emulator.cpu.bus.borrow().controller_1.button_states.bits(),
                         );
                     }
 
                     if ui.collapsing_header("CPU Debug", imgui::TreeNodeFlags::DEFAULT_OPEN) {
-                        ui.text(format!("Cycle: {}", cpu.cycles));
-                        ui.text(format!("PC: ${:04X}", cpu.pc));
-                        ui.text(format!("SP: ${:02X} ({})", cpu.sp, cpu.sp));
-                        ui.text(format!("A: ${:02X} ({})", cpu.a, cpu.a));
-                        ui.text(format!("X: ${:02X} ({})", cpu.x, cpu.x));
-                        ui.text(format!("Y: ${:02X} ({})", cpu.y, cpu.y));
-                        text_bitflags(ui, "STATUS", "NV-BDIZC", cpu.status.bits());
+                        ui.text(format!("Cycle: {}", emulator.cpu.cycles));
+                        ui.text(format!("PC: ${:04X}", emulator.cpu.pc));
+                        ui.text(format!("SP: ${:02X} ({})", emulator.cpu.sp, emulator.cpu.sp));
+                        ui.text(format!("A: ${:02X} ({})", emulator.cpu.a, emulator.cpu.a));
+                        ui.text(format!("X: ${:02X} ({})", emulator.cpu.x, emulator.cpu.x));
+                        ui.text(format!("Y: ${:02X} ({})", emulator.cpu.y, emulator.cpu.y));
+                        text_bitflags(ui, "STATUS", "NV-BDIZC", emulator.cpu.status.bits());
                     }
 
                     if ui.collapsing_header("PPU Debug", imgui::TreeNodeFlags::DEFAULT_OPEN) {
-                        let cpu = cpu.bus.borrow_mut();
-                        let ppu = cpu.ppu.borrow_mut();
+                        let bus = emulator.cpu.bus.borrow_mut();
+                        let ppu = bus.ppu.borrow_mut();
                         ui.text(format!("Cycle: {}", ppu.cycle));
                         ui.text(format!("Scanline: {}", ppu.scanline));
                         ui.text(format!("Frame: {}", ppu.frame));
@@ -320,6 +305,9 @@ fn main() -> Result<()> {
                         draw_pattern_table(ui, pattern_table_textures[0], 128.0 * 2.5);
                         draw_pattern_table(ui, pattern_table_textures[1], 128.0 * 2.5);
                     }
+
+                    let mut apu = emulator.apu.borrow_mut();
+                    emulator.apu_debug_panel.render(ui, &mut apu);
                 });
         }
 
@@ -329,8 +317,8 @@ fn main() -> Result<()> {
             gl.clear(glow::COLOR_BUFFER_BIT);
         }
 
-        let cpu = cpu.bus.borrow_mut();
-        let ppu = cpu.ppu.borrow_mut();
+        let bus = emulator.cpu.bus.borrow_mut();
+        let ppu = bus.ppu.borrow_mut();
         ppu::render::render(&ppu, &mut frame);
         update_rgb_texture(gl, nes_texture, NES_WIDTH as i32, NES_HEIGHT as i32, &frame.data);
 

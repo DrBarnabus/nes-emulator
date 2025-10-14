@@ -159,11 +159,11 @@ impl Default for ChannelVolumes {
 
 pub struct AudioProcessor {
     mixer: Mixer,
-    channel_volumes: ChannelVolumes,
+    pub channel_volumes: ChannelVolumes,
     high_pass: HighPassFilter,
     low_pass: LowPassFilter,
     compressor: Compressor,
-    master_volume: f32,
+    pub master_volume: f32,
 }
 
 impl AudioProcessor {

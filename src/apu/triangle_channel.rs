@@ -7,9 +7,9 @@ const TRIANGLE_SEQUENCE: [u8; 32] = [
 pub struct TriangleChannel {
     counter_halt: bool,
     linear_reload: u8,
-    linear_counter: u8,
+    pub linear_counter: u8,
     linear_reload_flag: bool,
-    timer_period: u16,
+    pub timer_period: u16,
     timer: u16,
     pub length_counter: u8,
 

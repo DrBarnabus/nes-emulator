@@ -3,12 +3,12 @@ const DMC_RATE_TABLE: [u16; 16] = [428, 380, 340, 320, 286, 254, 226, 214, 190, 
 pub struct DmcChannel {
     irq_enabled: bool,
     loop_flag: bool,
-    rate_index: u8,
-    output_level: u8,
-    sample_address: u16,
+    pub rate_index: u8,
+    pub output_level: u8,
+    pub sample_address: u16,
     sample_length: u16,
 
-    timer_period: u16,
+    pub timer_period: u16,
     timer: u16,
 
     pub enabled: bool,
@@ -169,7 +169,7 @@ impl DmcChannel {
         self.bits_remaining -= 1;
     }
 
-    pub fn output(&self) -> u8 {
+    pub fn raw_output(&self) -> u8 {
         if !self.enabled {
             return 0;
         }

@@ -4,6 +4,7 @@ pub mod bus;
 pub mod cartridge;
 pub mod controller;
 pub mod cpu;
+pub mod debug;
 pub mod emulator;
 pub mod ppu;
 

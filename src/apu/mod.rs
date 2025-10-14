@@ -19,18 +19,18 @@ pub const LENGTH_TABLE: [u8; 32] = [
 ];
 
 pub struct Apu {
-    pulse_1: PulseChannel,
-    pulse_2: PulseChannel,
-    triangle: TriangleChannel,
-    noise: NoiseChannel,
-    dmc: DmcChannel,
+    pub pulse_1: PulseChannel,
+    pub pulse_2: PulseChannel,
+    pub triangle: TriangleChannel,
+    pub noise: NoiseChannel,
+    pub dmc: DmcChannel,
 
     frame_counter: FrameCounter,
     cycle: u64,
     frame_irq: bool,
     dmc_irq: bool,
 
-    audio_processor: AudioProcessor,
+    pub audio_processor: AudioProcessor,
 }
 
 impl Default for Apu {
@@ -211,7 +211,7 @@ impl Apu {
         let pulse_2 = self.pulse_2.raw_output();
         let triangle = self.triangle.raw_output();
         let noise = self.noise.raw_output();
-        let dmc = self.dmc.output();
+        let dmc = self.dmc.raw_output();
 
         self.audio_processor.process(pulse_1, pulse_2, triangle, noise, dmc)
     }

@@ -7,10 +7,10 @@ pub struct NoiseChannel {
     length_counter_halt: bool,
     constant_volume: bool,
     volume: u8,
-    mode: bool, // false = Normal, true = Short Period
+    pub mode: bool, // false = Normal, true = Short Period
     period_index: u8,
 
-    timer_period: u16,
+    pub timer_period: u16,
     timer: u16,
     pub length_counter: u8,
 

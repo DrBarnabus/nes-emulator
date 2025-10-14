@@ -3,6 +3,7 @@ use super::cartridge::Cartridge;
 use super::cpu::Cpu;
 use crate::apu::Apu;
 use crate::audio::AudioOutput;
+use crate::debug::ApuDebugPanel;
 use crate::ppu::Ppu;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -60,6 +61,8 @@ pub struct Emulator {
     pub bus: Rc<RefCell<Bus>>,
 
     pub audio: Option<AudioOutput>,
+
+    pub apu_debug_panel: ApuDebugPanel,
 }
 
 impl Emulator {
@@ -76,7 +79,10 @@ impl Emulator {
             apu,
             cartridge,
             bus,
+
             audio: None,
+
+            apu_debug_panel: ApuDebugPanel::default(),
         }
     }
 
@@ -121,9 +127,12 @@ impl Emulator {
                 let mut apu = self.apu.borrow_mut();
                 apu.clock(|address| self.bus.borrow_mut().read(address));
 
-                let apu_sample = apu.output();
+                let sample = apu.output();
+
+                self.apu_debug_panel.update(&apu, sample);
+
                 if let Some(audio) = &mut self.audio {
-                    audio.push_source_sample(apu_sample);
+                    audio.push_source_sample(sample);
                 }
 
                 if apu.irq_pending() {
@@ -141,7 +150,7 @@ impl Emulator {
 
     pub fn run<F>(&mut self, mut frame_callback: F)
     where
-        F: FnMut(&mut Cpu),
+        F: FnMut(&mut Emulator),
     {
         self.reset();
 
@@ -155,7 +164,7 @@ impl Emulator {
             }
 
             accumulated_cycles += self.run_frame();
-            frame_callback(&mut self.cpu);
+            frame_callback(self);
 
             if accumulated_cycles >= SYNC_THRESHOLD {
                 timing_controller.synchronize(accumulated_cycles);

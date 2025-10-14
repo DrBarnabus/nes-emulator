@@ -19,7 +19,7 @@ pub struct PulseChannel {
     sweep_negate: bool,
     sweep_shift: u8,
 
-    timer_period: u16,
+    pub(crate) timer_period: u16,
     timer: u16,
     pub length_counter: u8,
 

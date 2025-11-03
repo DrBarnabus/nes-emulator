@@ -3,7 +3,7 @@ mod mapper;
 pub use mapper::Mapper;
 
 use anyhow::{Context, Result, bail, ensure};
-use mapper::{MappedRead, MappedWrite, Mapper000};
+use mapper::{MappedRead, MappedWrite, Mapper000, Mapper002};
 
 const NES_TAG: [u8; 4] = [0x4E, 0x45, 0x53, 0x1A]; // NES^Z
 const PRG_ROM_BANK_SIZE: usize = 16384; // 16KB
@@ -83,7 +83,7 @@ impl Cartridge {
             chr_rom,
             prg_ram: vec![0; PRG_RAM_SIZE], // PRG-RAM (8KB)
             chr_ram,
-            mapper: Self::create_mapper(mapper_number, prg_rom_size, chr_rom_size)?,
+            mapper: Self::create_mapper(mapper_number, prg_rom_size, chr_rom_size, mirroring)?,
             mirroring,
         })
     }
@@ -92,7 +92,7 @@ impl Cartridge {
     pub fn cpu_read(&mut self, address: u16) -> u8 {
         match self.mapper.cpu_read(address) {
             MappedRead::Data(value) => value,
-            MappedRead::PrgRom(address) if address < self.prg_rom.len() as u16 => self.prg_rom[address as usize],
+            MappedRead::PrgRom(address) if address < self.prg_rom.len() => self.prg_rom[address],
             MappedRead::PrgRam(address) if address < self.prg_ram.len() as u16 => self.prg_ram[address as usize],
             _ => 0, // Open bus
         }
@@ -134,9 +134,10 @@ impl Cartridge {
         self.mapper.mirroring()
     }
 
-    fn create_mapper(mapper_number: u8, prg_rom_size: usize, chr_rom_size: usize) -> Result<Box<dyn Mapper>> {
+    fn create_mapper(mapper_number: u8, prg_rom_size: usize, chr_rom_size: usize, mirroring: Mirroring) -> Result<Box<dyn Mapper>> {
         match mapper_number {
-            0 => Ok(Box::new(Mapper000::new(prg_rom_size, chr_rom_size))),
+            0 => Ok(Box::new(Mapper000::new(prg_rom_size, chr_rom_size, mirroring))),
+            2 => Ok(Box::new(Mapper002::new(prg_rom_size, chr_rom_size, mirroring))),
             _ => bail!("Unsupported mapper: {}", mapper_number),
         }
     }

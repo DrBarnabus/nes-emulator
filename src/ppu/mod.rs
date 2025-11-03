@@ -141,7 +141,7 @@ impl Ppu {
     fn read_status(&mut self) -> u8 {
         let result = self.status.bits();
 
-        self.status.remove(PpuStatusRegister::VBLANK_STARTED);
+        self.clear_vblank();
         self.addr.reset_latch();
         self.scroll.reset_latch();
 
@@ -205,7 +205,7 @@ impl Ppu {
         let address = self.addr.get();
 
         match address {
-            0..=0x1FFF => println!("Ignoring attempted write to chr rom, attempted to write {:02x}", address),
+            0..=0x1FFF => self.cartridge.borrow_mut().ppu_write(address, value),
             0x2000..=0x2FFF => self.vram[self.mirror_vram_address(address) as usize] = value,
             0x3000..=0x3EFF => unimplemented!("Address space 0x3000..0x3EFF is not expected to be used, attempted to write {:#x}", address),
             0x3F10 | 0x3F14 | 0x3F18 | 0x3F1C => self.palette_table[((address - 0x10) - 0x3F00) as usize] = value,

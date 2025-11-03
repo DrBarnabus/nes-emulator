@@ -327,7 +327,7 @@ fn main() -> Result<()> {
             update_rgb_texture(gl, palette_texture, 8, 4, &palette_data);
 
             for (i, pattern_table_texture) in pattern_table_textures.iter().enumerate() {
-                let pattern_table_data = populate_pattern_table_texture(i, &ppu.cartridge.borrow_mut().chr_rom, &ppu.palette_table, active_palette);
+                let pattern_table_data = populate_pattern_table_texture(i, &mut *ppu.cartridge.borrow_mut(), &ppu.palette_table, active_palette);
                 update_rgb_texture(gl, *pattern_table_texture, 128, 128, &pattern_table_data);
             }
         }
@@ -404,7 +404,7 @@ fn populate_palette_texture(palette_table: &[u8; 32]) -> Vec<u8> {
     data
 }
 
-fn populate_pattern_table_texture(pattern_table_idx: usize, chr_rom: &[u8], palette_table: &[u8; 32], active_palette: u8) -> Vec<u8> {
+fn populate_pattern_table_texture(pattern_table_idx: usize, cartridge: &mut Cartridge, palette_table: &[u8; 32], active_palette: u8) -> Vec<u8> {
     let mut data = vec![0; 128 * 128 * 3];
 
     let bank = pattern_table_idx * 0x1000;
@@ -413,7 +413,11 @@ fn populate_pattern_table_texture(pattern_table_idx: usize, chr_rom: &[u8], pale
         let tile_y = (tile_n / 16) * 8;
         let tile_x = (tile_n % 16) * 8;
 
-        let tile = &chr_rom[(bank + tile_n * 16)..=(bank + tile_n * 16 + 15)];
+        let tile_address = (bank + tile_n * 16) as u16;
+        let mut tile = [0u8; 16];
+        for j in 0..16 {
+            tile[j] = cartridge.ppu_read(tile_address + j as u16);
+        }
 
         for y in 0..=7 {
             let mut lower = tile[y];

@@ -1,12 +1,14 @@
 mod mapper_000;
+mod mapper_002;
 
 pub use mapper_000::Mapper000;
+pub use mapper_002::Mapper002;
 
 use super::Mirroring;
 
 pub enum MappedRead {
     Data(u8),
-    PrgRom(u16),
+    PrgRom(usize),
     PrgRam(u16),
     None,
 }

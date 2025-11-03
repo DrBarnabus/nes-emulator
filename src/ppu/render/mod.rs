@@ -50,8 +50,14 @@ fn render_background_nametable(ppu: &Ppu, frame: &mut Frame, nametable: &[u8], v
     let attribute_table = &nametable[0x3C0..0x400];
 
     for (i, tile_idx) in nametable.iter().enumerate().take(0x3C0) {
-        let tile =
-            &ppu.cartridge.borrow().chr_rom[(background_bank + *tile_idx as u16 * 16) as usize..=(background_bank + *tile_idx as u16 * 16 + 15) as usize];
+        let tile_address = background_bank + *tile_idx as u16 * 16;
+        let mut tile = [0u8; 16];
+        {
+            let mut cartridge = ppu.cartridge.borrow_mut();
+            for j in 0..16 {
+                tile[j] = cartridge.ppu_read(tile_address + j as u16);
+            }
+        }
 
         let tile_column = i % 32;
         let tile_row = i / 32;
@@ -134,7 +140,15 @@ pub fn render_sprites(ppu: &Ppu, frame: &mut Frame) {
         let tile_idx = ppu.oam_data[i + 1] as u16;
         let tile_x = ppu.oam_data[i + 3] as usize;
         let tile_y = ppu.oam_data[i] as usize;
-        let tile = &ppu.cartridge.borrow().chr_rom[(sprite_bank + tile_idx * 16) as usize..=(sprite_bank + tile_idx * 16 + 15) as usize];
+
+        let tile_address = sprite_bank + tile_idx * 16;
+        let mut tile = [0u8; 16];
+        {
+            let mut cartridge = ppu.cartridge.borrow_mut();
+            for j in 0..16 {
+                tile[j] = cartridge.ppu_read(tile_address + j as u16);
+            }
+        }
 
         let flip_vertical = ppu.oam_data[i + 2] >> 7 & 1 == 1;
         let flip_horizontal = ppu.oam_data[i + 2] >> 6 & 1 == 1;
